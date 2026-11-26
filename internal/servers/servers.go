@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/SlimaineB/teu/internal/config"
 	"github.com/SlimaineB/teu/internal/search"
@@ -39,6 +40,10 @@ type Hit struct {
 type Service struct {
 	cfg     *config.Config
 	sshPath string
+
+	mu          sync.RWMutex
+	snapshot    []Server
+	snapshotSet bool
 }
 
 func New(cfg *config.Config) *Service {
@@ -231,6 +236,44 @@ func (s *Service) Search(raw string, limit int) ([]Hit, error) {
 	if err != nil {
 		return nil, err
 	}
+	s.mu.Lock()
+	s.snapshot = list
+	s.snapshotSet = true
+	s.mu.Unlock()
+	return s.searchList(list, raw, limit)
+}
+
+// SearchLocal ranks against the last inventory snapshot instead of re-reading
+// the SSH config and teu config on every keystroke. It is used by the TUI to
+// filter live like the pod TUI; call Refresh to pick up inventory changes.
+func (s *Service) SearchLocal(raw string, limit int) ([]Hit, error) {
+	s.mu.RLock()
+	list := s.snapshot
+	ready := s.snapshotSet
+	s.mu.RUnlock()
+	if !ready {
+		fresh, err := s.List()
+		if err != nil {
+			return nil, err
+		}
+		s.mu.Lock()
+		s.snapshot = fresh
+		s.snapshotSet = true
+		s.mu.Unlock()
+		list = fresh
+	}
+	return s.searchList(list, raw, limit)
+}
+
+// Refresh invalidates the in-memory inventory snapshot.
+func (s *Service) Refresh() {
+	s.mu.Lock()
+	s.snapshot = nil
+	s.snapshotSet = false
+	s.mu.Unlock()
+}
+
+func (s *Service) searchList(list []Server, raw string, limit int) ([]Hit, error) {
 	query := search.Parse(normalizeQuery(raw))
 	candidates := make([]search.Candidate, 0, len(list))
 	byID := make(map[string]Server, len(list))

@@ -49,12 +49,14 @@ type ServerModel struct {
 	checking  bool
 	checkSeq  int
 	searchSeq int
+	localSeq  int
 }
 
 type serverSearchMsg struct {
-	seq  int
-	hits []servers.Hit
-	err  error
+	seq   int
+	local bool
+	hits  []servers.Hit
+	err   error
 }
 
 type serverCheckTickMsg struct{ seq int }
@@ -105,6 +107,22 @@ func (m ServerModel) searchCmd() tea.Cmd {
 	}
 }
 
+func (m ServerModel) localSearchCmd() tea.Cmd {
+	if m.svc == nil {
+		return nil
+	}
+	query := m.query
+	if m.editing {
+		query = strings.TrimSpace(m.input.Value())
+	}
+	seq := m.localSeq
+	svc := m.svc
+	return func() tea.Msg {
+		hits, err := svc.SearchLocal(query, 200)
+		return serverSearchMsg{seq: seq, local: true, hits: hits, err: err}
+	}
+}
+
 func (m ServerModel) checkCmd() tea.Cmd {
 	hit, ok := m.selected()
 	if !ok || m.svc == nil {
@@ -147,10 +165,16 @@ func (m ServerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case serverSearchMsg:
-		if msg.seq != m.searchSeq {
-			return m, nil
+		if msg.local {
+			if msg.seq != m.localSeq {
+				return m, nil
+			}
+		} else {
+			if msg.seq != m.searchSeq {
+				return m, nil
+			}
+			m.loading = false
 		}
-		m.loading = false
 		if msg.err != nil {
 			m.err = msg.err
 			return m, nil
@@ -238,17 +262,26 @@ func (m ServerModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "enter", "tab":
 			m.editing = false
 			m.query = strings.TrimSpace(m.input.Value())
+			m.input.SetValue(m.query)
+			m.localSeq++
 			m.searchSeq++
 			m.loading = true
+			m.status = ""
 			return m, tea.Batch(m.spinner.Tick, m.searchCmd())
 		case "esc":
 			m.editing = false
 			m.input.SetValue(m.query)
 			m.input.CursorEnd()
-			return m, nil
+			m.localSeq++
+			return m, m.localSearchCmd()
 		}
+		before := m.input.Value()
 		var cmd tea.Cmd
 		m.input, cmd = m.input.Update(msg)
+		if m.input.Value() != before {
+			m.localSeq++
+			return m, tea.Batch(cmd, m.localSearchCmd())
+		}
 		return m, cmd
 	}
 
@@ -318,7 +351,13 @@ func (m ServerModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return statusMsg{text: "ssh command copied"}
 		}
 	case "r":
+		if m.svc != nil {
+			m.svc.Refresh()
+		}
+		m.searchSeq++
+		m.localSeq++
 		m.loading = true
+		m.status = ""
 		return m, tea.Batch(m.spinner.Tick, m.searchCmd())
 	case "esc":
 		m.status = ""

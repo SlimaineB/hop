@@ -187,7 +187,8 @@ teu ssh sup-uat-01 uptime   # run a remote command
 ```
 
 In the VM TUI: `s` opens SSH, `c` runs checks, `enter` opens the web page,
-`y` copies the SSH command, `/` edits the search, `?` shows help.
+`y` copies the SSH command, `/` edits the search, `?` shows help. Like the pod
+TUI, editing the query filters results live; `r` reloads the inventory.
 
 Inventory sources:
 

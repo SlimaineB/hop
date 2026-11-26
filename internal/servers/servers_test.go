@@ -145,6 +145,45 @@ func TestHTTPCheck(t *testing.T) {
 	}
 }
 
+func TestSearchLocalUsesSnapshotUntilRefresh(t *testing.T) {
+	service := testService(t)
+	all, err := service.Search("", 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) == 0 {
+		t.Fatal("expected servers in the snapshot")
+	}
+
+	file, err := os.OpenFile(service.cfg.SSHConfig, os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.WriteString("\nHost newvm\n  HostName 10.9.9.9\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	local, err := service.SearchLocal("newvm", 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(local) != 0 {
+		t.Fatalf("snapshot should not see the new host yet: %+v", local)
+	}
+
+	service.Refresh()
+	local, err = service.SearchLocal("newvm", 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(local) != 1 || local[0].Server.Name != "newvm" {
+		t.Fatalf("after refresh hits = %+v", local)
+	}
+}
+
 func contains(values []string, value string) bool {
 	for _, item := range values {
 		if item == value {
