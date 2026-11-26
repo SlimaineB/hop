@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/SlimaineB/teu/internal/glob"
+	"github.com/SlimaineB/hop/internal/glob"
 )
 
 type sshPattern struct {

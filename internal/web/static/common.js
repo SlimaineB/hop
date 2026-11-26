@@ -118,7 +118,7 @@
     return "'" + text.replace(/'/g, "'\\''") + "'";
   }
 
-  window.teu = {
+  window.hop = {
     toast: toast,
     copyText: copyText,
     escapeHTML: escapeHTML,

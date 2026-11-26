@@ -3,7 +3,7 @@ package providers
 import (
 	"context"
 
-	"github.com/SlimaineB/teu/internal/config"
+	"github.com/SlimaineB/hop/internal/config"
 )
 
 type Ticket struct {

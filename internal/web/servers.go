@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/SlimaineB/teu/internal/servers"
+	"github.com/SlimaineB/hop/internal/servers"
 )
 
 type serverData struct {

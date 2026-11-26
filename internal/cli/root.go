@@ -10,9 +10,9 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
-	"github.com/SlimaineB/teu/internal/app"
-	"github.com/SlimaineB/teu/internal/config"
-	"github.com/SlimaineB/teu/internal/servers"
+	"github.com/SlimaineB/hop/internal/app"
+	"github.com/SlimaineB/hop/internal/config"
+	"github.com/SlimaineB/hop/internal/servers"
 )
 
 type App struct {
@@ -77,7 +77,7 @@ func Execute() int {
 	os.Args = normalizeArgs(os.Args)
 	root := NewRootCommand()
 	if err := root.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, "teu:", err)
+		fmt.Fprintln(os.Stderr, "hop:", err)
 		return 1
 	}
 	return 0
@@ -86,28 +86,28 @@ func Execute() int {
 func NewRootCommand() *cobra.Command {
 	a := &App{}
 	root := &cobra.Command{
-		Use:   "teu [terms...]",
+		Use:   "hop [terms...]",
 		Short: "Find a pod or VM, then open logs, metrics or SSH",
-		Long: `teu searches pods across all your Kubernetes contexts and VMs in your inventory.
+		Long: `hop searches pods across all your Kubernetes contexts and VMs in your inventory.
 
 With no arguments, it opens the unified local web UI.
 With arguments, it opens the pod search TUI. Term order does not matter.
 Prefer the explicit categories when possible:
-  teu pod <terms...>   search Kubernetes pods
-  teu vm <terms...>    search VMs and SSH servers
-  teu link <keyword>   open a configured browser shortcut
-  teu issue <key...>   open, search or create tickets
+  hop pod <terms...>   search Kubernetes pods
+  hop vm <terms...>    search VMs and SSH servers
+  hop link <keyword>   open a configured browser shortcut
+  hop issue <key...>   open, search or create tickets
 
-Provider aliases are generated from the config, so 'teu jira OPS-123'
+Provider aliases are generated from the config, so 'hop jira OPS-123'
 works without a --provider flag.
 
 Examples:
-  teu
-  teu pod api prod -2h
-  teu vm supervision uat
-  teu link grafana
-  teu issue OPS-123
-  teu jira new "Pod api crashloop"`,
+  hop
+  hop pod api prod -2h
+  hop vm supervision uat
+  hop link grafana
+  hop issue OPS-123
+  hop jira new "Pod api crashloop"`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args:          cobra.ArbitraryArgs,
@@ -149,7 +149,7 @@ Examples:
 		},
 	}
 
-	root.PersistentFlags().StringVar(&a.configPath, "config", "", "config file path (default: ~/.config/teu/config.yaml)")
+	root.PersistentFlags().StringVar(&a.configPath, "config", "", "config file path (default: ~/.config/hop/config.yaml)")
 	addFilterFlags(root, a)
 	addWebFlags(root, a)
 	root.Flags().BoolVar(&a.flags.refresh, "refresh", false, "force a refresh of all clusters")

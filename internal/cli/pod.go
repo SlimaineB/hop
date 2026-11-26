@@ -7,8 +7,8 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
-	"github.com/SlimaineB/teu/internal/app"
-	"github.com/SlimaineB/teu/internal/config"
+	"github.com/SlimaineB/hop/internal/app"
+	"github.com/SlimaineB/hop/internal/config"
 )
 
 func (a *App) newPodCommand() *cobra.Command {

@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/SlimaineB/teu/internal/config"
-	"github.com/SlimaineB/teu/internal/providers"
+	"github.com/SlimaineB/hop/internal/config"
+	"github.com/SlimaineB/hop/internal/providers"
 )
 
 var keyPattern = regexp.MustCompile(`^[A-Z][A-Z0-9_]+-[0-9]+$`)

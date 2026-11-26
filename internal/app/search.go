@@ -5,9 +5,9 @@ import (
 	"errors"
 	"time"
 
-	"github.com/SlimaineB/teu/internal/config"
-	"github.com/SlimaineB/teu/internal/kube"
-	"github.com/SlimaineB/teu/internal/search"
+	"github.com/SlimaineB/hop/internal/config"
+	"github.com/SlimaineB/hop/internal/kube"
+	"github.com/SlimaineB/hop/internal/search"
 )
 
 var ErrNotReady = errors.New("pod snapshot is not ready")

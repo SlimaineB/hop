@@ -11,10 +11,10 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
-	"github.com/SlimaineB/teu/internal/app"
-	"github.com/SlimaineB/teu/internal/config"
-	"github.com/SlimaineB/teu/internal/servers"
-	"github.com/SlimaineB/teu/internal/version"
+	"github.com/SlimaineB/hop/internal/app"
+	"github.com/SlimaineB/hop/internal/config"
+	"github.com/SlimaineB/hop/internal/servers"
+	"github.com/SlimaineB/hop/internal/version"
 )
 
 func (a *App) newContextsCommand() *cobra.Command {
@@ -79,7 +79,7 @@ func (a *App) newContextsCommand() *cobra.Command {
 func (a *App) newConfigCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
-		Short: "Manage the teu configuration",
+		Short: "Manage the hop configuration",
 	}
 	cmd.AddCommand(
 		a.newConfigShortcutCommand(),
@@ -296,7 +296,7 @@ func (a *App) newConfigServerCommand() *cobra.Command {
 
 	remove := &cobra.Command{
 		Use:   "remove NAME",
-		Short: "Remove a VM/server from the teu config",
+		Short: "Remove a VM/server from the hop config",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			path, err := config.RemoveServer(a.resolvedConfigPath(), args[0])
@@ -315,7 +315,7 @@ func (a *App) newConfigServerCommand() *cobra.Command {
 func (a *App) newConfigShortcutCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "shortcut",
-		Short: "Manage browser shortcuts for teu link",
+		Short: "Manage browser shortcuts for hop link",
 	}
 	var description string
 	var extraKeywords []string

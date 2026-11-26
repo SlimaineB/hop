@@ -4,7 +4,7 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/SlimaineB/teu/internal/actions"
+	"github.com/SlimaineB/hop/internal/actions"
 )
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {

@@ -24,7 +24,7 @@
     const edges = graph.edges || [];
     if (nodes.length === 0) return;
 
-    const escape = window.teu.escapeHTML;
+    const escape = window.hop.escapeHTML;
     const byId = new Map();
     nodes.forEach(function (node) { byId.set(node.id, node); });
 

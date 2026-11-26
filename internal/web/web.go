@@ -17,12 +17,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/SlimaineB/teu/internal/app"
-	"github.com/SlimaineB/teu/internal/config"
-	"github.com/SlimaineB/teu/internal/kube"
-	"github.com/SlimaineB/teu/internal/search"
-	"github.com/SlimaineB/teu/internal/servers"
-	"github.com/SlimaineB/teu/internal/version"
+	"github.com/SlimaineB/hop/internal/app"
+	"github.com/SlimaineB/hop/internal/config"
+	"github.com/SlimaineB/hop/internal/kube"
+	"github.com/SlimaineB/hop/internal/search"
+	"github.com/SlimaineB/hop/internal/servers"
+	"github.com/SlimaineB/hop/internal/version"
 )
 
 //go:embed templates/*.html static/*
@@ -82,7 +82,7 @@ func New(backend Backend, options Options) (*Server, error) {
 		"dash":         dash,
 		"safeURL":      safeURL,
 	}
-	tmpl, err := template.New("teu").Funcs(funcs).ParseFS(content, "templates/*.html")
+	tmpl, err := template.New("hop").Funcs(funcs).ParseFS(content, "templates/*.html")
 	if err != nil {
 		return nil, fmt.Errorf("parse templates: %w", err)
 	}

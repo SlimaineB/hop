@@ -10,8 +10,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/SlimaineB/teu/internal/config"
-	"github.com/SlimaineB/teu/internal/search"
+	"github.com/SlimaineB/hop/internal/config"
+	"github.com/SlimaineB/hop/internal/search"
 )
 
 type Server struct {
@@ -244,7 +244,7 @@ func (s *Service) Search(raw string, limit int) ([]Hit, error) {
 }
 
 // SearchLocal ranks against the last inventory snapshot instead of re-reading
-// the SSH config and teu config on every keystroke. It is used by the TUI to
+// the SSH config and hop config on every keystroke. It is used by the TUI to
 // filter live like the pod TUI; call Refresh to pick up inventory changes.
 func (s *Service) SearchLocal(raw string, limit int) ([]Hit, error) {
 	s.mu.RLock()

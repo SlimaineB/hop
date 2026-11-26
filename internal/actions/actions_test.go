@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/SlimaineB/teu/internal/kube"
+	"github.com/SlimaineB/hop/internal/kube"
 )
 
 func TestCommandsIncludeTimeRangeAndNode(t *testing.T) {

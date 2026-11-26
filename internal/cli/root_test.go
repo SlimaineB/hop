@@ -6,20 +6,20 @@ import (
 )
 
 func TestNormalizeArgsKeepsRelativeDurationsAsTerms(t *testing.T) {
-	got := normalizeArgs([]string{"teu", "poddy", "-2h", "ns:apps", "-30m", "--limit", "5"})
-	want := []string{"teu", "poddy", "last:2h", "ns:apps", "last:30m", "--limit", "5"}
+	got := normalizeArgs([]string{"hop", "poddy", "-2h", "ns:apps", "-30m", "--limit", "5"})
+	want := []string{"hop", "poddy", "last:2h", "ns:apps", "last:30m", "--limit", "5"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("normalizeArgs() = %v, want %v", got, want)
 	}
 }
 
 func TestNormalizeArgsLeavesFlagsAndExplicitSeparator(t *testing.T) {
-	got := normalizeArgs([]string{"teu", "-1d", "--", "-2h"})
-	want := []string{"teu", "last:1d", "--", "-2h"}
+	got := normalizeArgs([]string{"hop", "-1d", "--", "-2h"})
+	want := []string{"hop", "last:1d", "--", "-2h"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("normalizeArgs() = %v, want %v", got, want)
 	}
-	if got := normalizeArgs([]string{"teu", "-h", "--timeout", "-3s"}); !reflect.DeepEqual(got, []string{"teu", "-h", "--timeout", "-3s"}) {
+	if got := normalizeArgs([]string{"hop", "-h", "--timeout", "-3s"}); !reflect.DeepEqual(got, []string{"hop", "-h", "--timeout", "-3s"}) {
 		t.Fatalf("normalizeArgs() changed flags: %v", got)
 	}
 }

@@ -13,12 +13,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/SlimaineB/teu/internal/actions"
-	"github.com/SlimaineB/teu/internal/app"
-	"github.com/SlimaineB/teu/internal/config"
-	"github.com/SlimaineB/teu/internal/kube"
-	"github.com/SlimaineB/teu/internal/servers"
-	"github.com/SlimaineB/teu/internal/web"
+	"github.com/SlimaineB/hop/internal/actions"
+	"github.com/SlimaineB/hop/internal/app"
+	"github.com/SlimaineB/hop/internal/config"
+	"github.com/SlimaineB/hop/internal/kube"
+	"github.com/SlimaineB/hop/internal/servers"
+	"github.com/SlimaineB/hop/internal/web"
 )
 
 type webLauncher struct {
@@ -119,10 +119,10 @@ func (a *App) serveWeb(cmd *cobra.Command, service *app.Service, cfg *config.Con
 	if query != "" {
 		target += "/?q=" + url.QueryEscape(query)
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "teu UI: %s\n", target)
+	fmt.Fprintf(cmd.OutOrStdout(), "hop UI: %s\n", target)
 	if !a.flags.noOpen && cfg.UI.BrowserEnabled() {
 		if err := actions.OpenBrowser(target); err != nil {
-			fmt.Fprintf(cmd.ErrOrStderr(), "teu: browser unavailable: %v\n", err)
+			fmt.Fprintf(cmd.ErrOrStderr(), "hop: browser unavailable: %v\n", err)
 		}
 	}
 

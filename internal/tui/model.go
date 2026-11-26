@@ -11,9 +11,9 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/SlimaineB/teu/internal/app"
-	"github.com/SlimaineB/teu/internal/kube"
-	"github.com/SlimaineB/teu/internal/search"
+	"github.com/SlimaineB/hop/internal/app"
+	"github.com/SlimaineB/hop/internal/kube"
+	"github.com/SlimaineB/hop/internal/search"
 )
 
 type Options struct {

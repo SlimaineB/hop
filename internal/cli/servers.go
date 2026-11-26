@@ -13,9 +13,9 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
-	"github.com/SlimaineB/teu/internal/config"
-	"github.com/SlimaineB/teu/internal/servers"
-	"github.com/SlimaineB/teu/internal/tui"
+	"github.com/SlimaineB/hop/internal/config"
+	"github.com/SlimaineB/hop/internal/servers"
+	"github.com/SlimaineB/hop/internal/tui"
 )
 
 func (a *App) loadServerService() (*servers.Service, *config.Config, error) {

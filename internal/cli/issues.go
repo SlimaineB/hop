@@ -18,12 +18,12 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
-	"github.com/SlimaineB/teu/internal/actions"
-	"github.com/SlimaineB/teu/internal/app"
-	"github.com/SlimaineB/teu/internal/config"
-	"github.com/SlimaineB/teu/internal/providers"
-	"github.com/SlimaineB/teu/internal/providers/builtin"
-	"github.com/SlimaineB/teu/internal/servers"
+	"github.com/SlimaineB/hop/internal/actions"
+	"github.com/SlimaineB/hop/internal/app"
+	"github.com/SlimaineB/hop/internal/config"
+	"github.com/SlimaineB/hop/internal/providers"
+	"github.com/SlimaineB/hop/internal/providers/builtin"
+	"github.com/SlimaineB/hop/internal/servers"
 )
 
 var ticketKeyPattern = regexp.MustCompile(`^[A-Z][A-Z0-9_]+-[0-9]+$`)
@@ -36,16 +36,16 @@ func (a *App) newIssueCommand() *cobra.Command {
 		Long: `Open, search or create tickets in configured providers.
 
 A ticket key opens directly:
-  teu issue OPS-123
+  hop issue OPS-123
 
 Free-form terms search every configured provider:
-  teu issue "checkout timeout"
+  hop issue "checkout timeout"
 
-If several providers can handle the request, teu prompts a menu. Provider
+If several providers can handle the request, hop prompts a menu. Provider
 aliases also work without a flag:
-  teu jira OPS-123
-  teu jira search "checkout timeout"
-  teu jira new "Pod api crashloop"`,
+  hop jira OPS-123
+  hop jira search "checkout timeout"
+  hop jira new "Pod api crashloop"`,
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, _, err := config.Load(a.configPath)
@@ -240,14 +240,14 @@ func (a *App) runProviderAlias(cmd *cobra.Command, cfg *config.Config, id string
 	case "new":
 		title := strings.Join(args[1:], " ")
 		if title == "" {
-			return fmt.Errorf("usage: teu %s new TITLE", id)
+			return fmt.Errorf("usage: hop %s new TITLE", id)
 		}
 		return a.createTicket(cmd, provider, title, "", "", "", false)
 	case "search":
 		return a.searchTickets(cmd, []providers.TicketProvider{provider}, strings.Join(args[1:], " "), 10)
 	case "open":
 		if len(args) != 2 {
-			return fmt.Errorf("usage: teu %s open KEY", id)
+			return fmt.Errorf("usage: hop %s open KEY", id)
 		}
 		return a.openTicketInput(cmd, set, id, args[1], false)
 	case "providers":
@@ -292,7 +292,7 @@ func (a *App) openTicket(cmd *cobra.Command, provider providers.TicketProvider, 
 
 func (a *App) searchTickets(cmd *cobra.Command, list []providers.TicketProvider, query string, limit int) error {
 	if len(list) == 0 {
-		return fmt.Errorf("no issue providers configured; add a providers block to the teu config")
+		return fmt.Errorf("no issue providers configured; add a providers block to the hop config")
 	}
 	if limit <= 0 {
 		limit = 10
@@ -418,7 +418,7 @@ func chooseProvider(cmd *cobra.Command, list []providers.TicketProvider, action 
 		return list[0], nil
 	}
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
-		return nil, fmt.Errorf("several providers can %s; run teu <provider> ... instead", action)
+		return nil, fmt.Errorf("several providers can %s; run hop <provider> ... instead", action)
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "Several providers can %s:\n", action)
 	for i, provider := range list {

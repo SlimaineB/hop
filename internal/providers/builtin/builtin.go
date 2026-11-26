@@ -1,8 +1,8 @@
 package builtin
 
 import (
-	"github.com/SlimaineB/teu/internal/providers"
-	"github.com/SlimaineB/teu/internal/providers/jira"
+	"github.com/SlimaineB/hop/internal/providers"
+	"github.com/SlimaineB/hop/internal/providers/jira"
 )
 
 func Registry() *providers.Registry {

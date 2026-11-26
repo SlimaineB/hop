@@ -1,6 +1,6 @@
 <div align="center">
 
-# teu
+# hop
 
 **Find the right pod, VM, or ticket. Open logs, a shell, or the issue. Without leaving the terminal.**
 
@@ -15,16 +15,16 @@ providers.
 
 ---
 
-`teu` is a single binary that keeps you from juggling Kubernetes contexts.
+`hop` is a single binary that keeps you from juggling Kubernetes contexts.
 It lists pods across all your clusters in parallel, ranks them by relevance, and
 lets you immediately open logs, metrics, k9s, the pod page, or node details.
 Add the `vm` tag to search VMs from `~/.ssh/config` instead, run HTTP/SSH
-checks, or open a shell. `teu issue OPS-123` opens a ticket, and
-`teu issue new` creates one without choosing an implementation flag.
+checks, or open a shell. `hop issue OPS-123` opens a ticket, and
+`hop issue new` creates one without choosing an implementation flag.
 
 No daemon, no fzf, no copy-pasting pod names, SSH hosts, or ticket keys.
 
-## What `teu` does
+## What `hop` does
 
 | Feature | Detail |
 |---|---|
@@ -39,14 +39,14 @@ No daemon, no fzf, no copy-pasting pod names, SSH hosts, or ticket keys.
 | VM checks | HTTP metrics/health, uptime, load, memory, disk, failed units |
 | SSH | Copy the SSH command or open an interactive session |
 | Pod topology | Ingress, Service, EndpointSlice, Pod, owner chain, PVC, Node |
-| Browser shortcuts | `teu link jira` opens configured links by keyword |
+| Browser shortcuts | `hop link jira` opens configured links by keyword |
 | Issue providers | Open/search/create Jira tickets, extensible to other providers |
 | Cache | In-memory and on-disk snapshots for repeated searches |
 
 ## Preview
 
 ```text
-$ teu search poddy ns:poddy-system 12h 14h
+$ hop search poddy ns:poddy-system 12h 14h
 
 logs/metrics range: 12:00 → 14:00
 SCORE  POD                          NAMESPACE      CONTEXT  ENV  STATUS   AGE  NODE
@@ -55,7 +55,7 @@ SCORE  POD                          NAMESPACE      CONTEXT  ENV  STATUS   AGE  N
 99%    poddy-headscale-8659df7bc9   poddy-system   default   -    Running  3h   slim
 ```
 
-With no arguments, `teu` opens the web UI. With arguments, it opens the TUI
+With no arguments, `hop` opens the web UI. With arguments, it opens the TUI
 when stdin and stdout are terminals; otherwise it prints a table.
 
 ## Installation
@@ -70,61 +70,61 @@ Requirements:
 From source:
 
 ```bash
-go build -trimpath -o teu ./cmd/teu
-install -m 0755 teu ~/.local/bin/teu
+go build -trimpath -o hop ./cmd/hop
+install -m 0755 hop ~/.local/bin/hop
 ```
 
 Or directly:
 
 ```bash
-go install ./cmd/teu
+go install ./cmd/hop
 ```
 
 Verify:
 
 ```bash
-teu version
-teu contexts
+hop version
+hop contexts
 ```
 
 ## Quick start
 
 ```bash
 # Local web UI
-teu
+hop
 
 # Pod TUI
-teu pod poddy
+hop pod poddy
 
 # Name + namespace + time range
-teu pod poddy ns:poddy-system 12h 14h
+hop pod poddy ns:poddy-system 12h 14h
 
 # Free-form tag: prod matches env, context, name, etc.
-teu pod api prod -2h
+hop pod api prod -2h
 
 # VMs only
-teu vm supervision uat
+hop vm supervision uat
 
 # Non-interactive output
-teu pod api ns:apps 12h 14h --plain
-teu search api ns:apps 12h 14h --plain
-teu vm supervision uat --table
+hop pod api ns:apps 12h 14h --plain
+hop search api ns:apps 12h 14h --plain
+hop vm supervision uat --table
 
 # Browser shortcuts by keyword
-teu link grafana
-teu link ticket
+hop link grafana
+hop link ticket
 
 # Tickets: open by key, search, or create
-teu issue OPS-123
-teu issue "checkout timeout"
-teu issue new "Pod api crashloop" --from-pod api-123
+hop issue OPS-123
+hop issue "checkout timeout"
+hop issue new "Pod api crashloop" --from-pod api-123
 ```
 
 Term order does not matter:
 
 ```bash
-teu 12h api ns:apps 14h
-teu ns:apps api 14h 12h
+hop 12h api ns:apps 14h
+hop ns:apps api 14h 12h
 ```
 
 ## Search
@@ -157,8 +157,8 @@ Filters support globs (`*`, `?`, `[...]`) and negation with `!` inside the
 value:
 
 ```bash
-teu api 'ns:prod-*' 'phase:!Running'
-teu 'label:app=api' 'env:!dev'
+hop api 'ns:prod-*' 'phase:!Running'
+hop 'label:app=api' 'env:!dev'
 ```
 
 Multiple `label:`, `container:`, `image:`, and `tag:` filters are combined with
@@ -170,20 +170,20 @@ fields are the server name, SSH alias, host, user, environment, and tags.
 
 ## VMs and SSH
 
-`teu vm [terms...]` searches the VM inventory and skips Kubernetes entirely.
-The legacy form `teu supervision uat vm` also works: the `vm` term is a
+`hop vm [terms...]` searches the VM inventory and skips Kubernetes entirely.
+The legacy form `hop supervision uat vm` also works: the `vm` term is a
 selector, not a filter.
 
 ```bash
-teu vm supervision uat      # TUI in a terminal, table otherwise
-teu vm supervision uat --table
-teu vm supervision uat --check
-teu vm supervision uat --json
-teu supervision uat vm      # legacy selector form
-teu server sup-uat-01       # one server, with details
-teu server sup-uat-01 --check --json
-teu ssh sup-uat-01          # interactive SSH
-teu ssh sup-uat-01 uptime   # run a remote command
+hop vm supervision uat      # TUI in a terminal, table otherwise
+hop vm supervision uat --table
+hop vm supervision uat --check
+hop vm supervision uat --json
+hop supervision uat vm      # legacy selector form
+hop server sup-uat-01       # one server, with details
+hop server sup-uat-01 --check --json
+hop ssh sup-uat-01          # interactive SSH
+hop ssh sup-uat-01 uptime   # run a remote command
 ```
 
 In the VM TUI: `s` opens SSH, `c` runs checks, `enter` opens the web page,
@@ -193,7 +193,7 @@ TUI, editing the query filters results live; `r` reloads the inventory.
 Inventory sources:
 
 1. every concrete alias in `~/.ssh/config` (wildcards are not listed);
-2. `servers` entries in the teu config.
+2. `servers` entries in the hop config.
 
 SSH options (`HostName`, `User`, `Port`, `ProxyJump`) are read from
 `~/.ssh/config`. Set `ssh_config` to use another file. `Include` files are
@@ -203,17 +203,17 @@ and SSH alias (`sup-uat-vm-01` → `sup`, `uat`, `vm`, `01`).
 ### Configure VMs
 
 ```bash
-teu config server add sup-uat-01 deploy@10.0.0.12 supervision uat vm
-teu config server add db01 --ssh db01 --tags db,prod --health-url http://db01:8080/healthz
-teu config server list
-teu config server remove db01
+hop config server add sup-uat-01 deploy@10.0.0.12 supervision uat vm
+hop config server add db01 --ssh db01 --tags db,prod --health-url http://db01:8080/healthz
+hop config server list
+hop config server remove db01
 ```
 
 The second positional argument is treated as `user@host` only when it contains
 `@`; otherwise it is a tag. Use flags for explicit values:
 
 ```bash
-teu config server add web01 \
+hop config server add web01 \
   --host 10.0.0.20 --user ubuntu --port 2222 \
   --env prod --tags web,prod --no-ssh-checks
 ```
@@ -237,7 +237,7 @@ servers:
     ssh_checks: false
 ```
 
-If `metrics_url` is omitted, `teu` checks
+If `metrics_url` is omitted, `hop` checks
 `http://<host>:9100/metrics`. `health_url` is optional. Machine checks use a
 read-only SSH script (`uptime`, load, CPU, `free`, `df`, `systemctl --failed`)
 with `BatchMode=yes`. Disable them per server with `ssh_checks: false`.
@@ -280,7 +280,7 @@ Useful rules:
   automatically at the end of the range.
 
 The `-2h` form is accepted directly on the CLI even though Cobra would normally
-treat it as a flag: `teu` normalizes it to `last:2h` before parsing.
+treat it as a flag: `hop` normalizes it to `last:2h` before parsing.
 
 ## TUI
 
@@ -304,10 +304,10 @@ kubelet, CPU/memory/pods, conditions, and taints.
 ## Web UI
 
 ```bash
-teu
-teu web
-teu web --bind 127.0.0.1 --port 8080
-teu web --no-open 'api 12h 14h'
+hop
+hop web
+hop web --bind 127.0.0.1 --port 8080
+hop web --no-open 'api 12h 14h'
 ```
 
 The UI listens on `127.0.0.1` by default. `--port 0` picks a free port.
@@ -330,33 +330,33 @@ card. Click any topology node for facts and a copyable `kubectl` command.
 
 | Command | Purpose |
 |---|---|
-| `teu pod [terms...]` | Search pods, alias `pods`; TUI in a terminal |
-| `teu vm [tags...]` | Search VMs, TUI in a terminal; aliases `servers`, `vms` |
-| `teu link [keywords...]` | Open a configured browser shortcut, alias `links` |
-| `teu issue [key\|terms...]` | Open, search or create tickets |
-| `teu issue new [title...]` | Create a ticket, optional `--from-pod` / `--from-vm` |
-| `teu issue providers` | List configured issue providers |
-| `teu <provider> ...` | Provider alias, e.g. `teu jira OPS-123` |
-| `teu [terms...]` | Legacy root search: pods, or VMs with the `vm` selector |
-| `teu` | Local web UI |
-| `teu web [terms...]` | Web UI, aliases `ui`, `serve` |
-| `teu search [terms...]` | Non-interactive pod search, alias `find` |
-| `teu server NAME` | Show one VM, add `--check` or `--json` |
-| `teu ssh NAME [command...]` | Open SSH or run a remote command |
-| `teu config server add NAME ...` | Add or update a VM |
-| `teu config server list` | List discovered VMs/servers |
-| `teu config server remove NAME` | Remove a config VM entry |
-| `teu config shortcut add NAME URL ...` | Add or update a browser shortcut |
-| `teu config shortcut list` | List browser shortcuts |
-| `teu config shortcut remove NAME` | Remove a browser shortcut |
-| `teu contexts` | List contexts, alias `ctx` |
-| `teu config init` | Create an example configuration |
-| `teu config path` | Print the effective config path |
-| `teu config show` | Print the resolved config |
-| `teu config check` | Validate config and kubeconfigs |
-| `teu cache dir` | Print the cache directory |
-| `teu cache clear` | Delete cached snapshots |
-| `teu version` | Print the version |
+| `hop pod [terms...]` | Search pods, alias `pods`; TUI in a terminal |
+| `hop vm [tags...]` | Search VMs, TUI in a terminal; aliases `servers`, `vms` |
+| `hop link [keywords...]` | Open a configured browser shortcut, alias `links` |
+| `hop issue [key\|terms...]` | Open, search or create tickets |
+| `hop issue new [title...]` | Create a ticket, optional `--from-pod` / `--from-vm` |
+| `hop issue providers` | List configured issue providers |
+| `hop <provider> ...` | Provider alias, e.g. `hop jira OPS-123` |
+| `hop [terms...]` | Legacy root search: pods, or VMs with the `vm` selector |
+| `hop` | Local web UI |
+| `hop web [terms...]` | Web UI, aliases `ui`, `serve` |
+| `hop search [terms...]` | Non-interactive pod search, alias `find` |
+| `hop server NAME` | Show one VM, add `--check` or `--json` |
+| `hop ssh NAME [command...]` | Open SSH or run a remote command |
+| `hop config server add NAME ...` | Add or update a VM |
+| `hop config server list` | List discovered VMs/servers |
+| `hop config server remove NAME` | Remove a config VM entry |
+| `hop config shortcut add NAME URL ...` | Add or update a browser shortcut |
+| `hop config shortcut list` | List browser shortcuts |
+| `hop config shortcut remove NAME` | Remove a browser shortcut |
+| `hop contexts` | List contexts, alias `ctx` |
+| `hop config init` | Create an example configuration |
+| `hop config path` | Print the effective config path |
+| `hop config show` | Print the resolved config |
+| `hop config check` | Validate config and kubeconfigs |
+| `hop cache dir` | Print the cache directory |
+| `hop cache clear` | Delete cached snapshots |
+| `hop version` | Print the version |
 
 Main flags:
 
@@ -381,16 +381,16 @@ Main flags:
 Resolution order:
 
 1. `--config <path>`;
-2. `$TEU_CONFIG`;
-3. `$XDG_CONFIG_HOME/teu/config.yaml`;
-4. `~/.config/teu/config.yaml`.
+2. `$HOP_CONFIG`;
+3. `$XDG_CONFIG_HOME/hop/config.yaml`;
+4. `~/.config/hop/config.yaml`.
 
 Without a config file, the defaults are enough.
 
 ```bash
-teu config init
-teu config show
-teu config check
+hop config init
+hop config show
+hop config check
 ```
 
 Kubeconfigs:
@@ -474,7 +474,7 @@ workspaces:
 ```
 
 The longest context pattern wins. Workspace links override global links field
-by field. If `env` is not set, `teu` infers it from the context name (`prod`,
+by field. If `env` is not set, `hop` infers it from the context name (`prod`,
 `staging`, `dev`, `test`, `sandbox`, `local`).
 
 ### Links and placeholders
@@ -520,24 +520,24 @@ Without an explicit time range, `{from}` is now − 1 hour and `{to}` is now.
 
 ## Issues and providers
 
-`teu issue` never asks for `--provider`. It detects ticket keys, uses the
+`hop issue` never asks for `--provider`. It detects ticket keys, uses the
 configured default provider, or prompts a menu when several providers match.
 
 ```bash
-teu issue OPS-123              # open a ticket
-teu issue "checkout timeout"   # search all configured providers
-teu issue new "Pod api crashloop" --from-pod api-123
-teu issue new "VM disk full" --from-vm sup-uat-01
-teu issue providers
+hop issue OPS-123              # open a ticket
+hop issue "checkout timeout"   # search all configured providers
+hop issue new "Pod api crashloop" --from-pod api-123
+hop issue new "VM disk full" --from-vm sup-uat-01
+hop issue providers
 ```
 
 Provider aliases work directly and are handy when several providers exist:
 
 ```bash
-teu jira OPS-123
-teu jira search "checkout timeout"
-teu jira new "Pod api crashloop"
-teu jira                        # recent tickets
+hop jira OPS-123
+hop jira search "checkout timeout"
+hop jira new "Pod api crashloop"
+hop jira                        # recent tickets
 ```
 
 Jira configuration:
@@ -563,7 +563,7 @@ export JIRA_USER="me@example.com"
 export JIRA_TOKEN="..."
 ```
 
-Tokens are read from the environment, never from the teu config. Jira uses the
+Tokens are read from the environment, never from the hop config. Jira uses the
 REST API v2 (`/rest/api/2`). Opening a ticket only needs the base URL; search and
 create need the API token. Adding another provider means implementing
 `internal/providers.TicketProvider`, registering a factory, and adding its
@@ -571,18 +571,18 @@ config block. The CLI, TUI, and web UI stay unchanged.
 
 ## Browser shortcuts
 
-`teu link` opens a configured URL by keyword. It is separate from the pod
+`hop link` opens a configured URL by keyword. It is separate from the pod
 observability links: shortcuts are global browser bookmarks.
 
 ```bash
-teu link grafana
-teu link ticket
-teu link --list
-teu link --print jira
-teu config shortcut add swagger https://api.example.com/swagger api openapi
-teu config shortcut add jira https://jira.example.com --keywords jira,ticket,bug
-teu config shortcut list
-teu config shortcut remove jira
+hop link grafana
+hop link ticket
+hop link --list
+hop link --print jira
+hop config shortcut add swagger https://api.example.com/swagger api openapi
+hop config shortcut add jira https://jira.example.com --keywords jira,ticket,bug
+hop config shortcut list
+hop config shortcut remove jira
 ```
 
 ```yaml
@@ -607,16 +607,16 @@ Shortcuts also appear in the unified web UI for one-click access.
 ## Cache
 
 - An in-memory snapshot avoids re-running a search during `cache_ttl`.
-- An on-disk snapshot is kept in `os.UserCacheDir()/teu`
-  (usually `~/.cache/teu`).
+- An on-disk snapshot is kept in `os.UserCacheDir()/hop`
+  (usually `~/.cache/hop`).
 - `cache_ttl: 0` disables the cache.
-- `teu cache dir` and `teu cache clear` manage the directory.
+- `hop cache dir` and `hop cache clear` manage the directory.
 - The on-disk cache is not written if a cluster returned an error.
 
 ## Architecture
 
 ```text
-cmd/teu              entry point
+cmd/hop              entry point
 internal/cli          Cobra, flags, commands
 internal/config       YAML config, workspaces, resolution, templates
 internal/kube         kubeconfig, contexts, pods, nodes, client-go
@@ -655,8 +655,8 @@ go test ./internal/config   # config and links
 Build with version metadata:
 
 ```bash
-go build -ldflags "-X github.com/SlimaineB/teu/internal/version.Version=v0.1.0" \
-  -o teu ./cmd/teu
+go build -ldflags "-X github.com/SlimaineB/hop/internal/version.Version=v0.1.0" \
+  -o hop ./cmd/hop
 ```
 
 `Commit` and `Date` are also available via `-X` if you want to automate the
@@ -681,7 +681,7 @@ version in CI.
 By default, the web UI listens only on `127.0.0.1`. Do not expose it on a public
 interface without authentication or a reverse proxy.
 
-`teu` does not copy your Kubernetes credentials or SSH keys: it uses your
+`hop` does not copy your Kubernetes credentials or SSH keys: it uses your
 kubeconfigs and SSH agent/config directly. The config created by `config init`
 is `0600`. The cache contains pod metadata, not Kubernetes secrets. Machine
 checks only run read-only inspection commands. Browser shortcuts only accept

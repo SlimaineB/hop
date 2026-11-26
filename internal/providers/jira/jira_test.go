@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/SlimaineB/teu/internal/config"
-	"github.com/SlimaineB/teu/internal/providers"
+	"github.com/SlimaineB/hop/internal/config"
+	"github.com/SlimaineB/hop/internal/providers"
 )
 
 func TestProviderSearchGetCreate(t *testing.T) {

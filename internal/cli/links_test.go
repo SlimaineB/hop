@@ -3,7 +3,7 @@ package cli
 import (
 	"testing"
 
-	"github.com/SlimaineB/teu/internal/config"
+	"github.com/SlimaineB/hop/internal/config"
 )
 
 func TestMatchShortcuts(t *testing.T) {

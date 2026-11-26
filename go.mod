@@ -1,4 +1,4 @@
-module github.com/SlimaineB/teu
+module github.com/SlimaineB/hop
 
 go 1.25.0
 

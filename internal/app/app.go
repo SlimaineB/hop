@@ -10,12 +10,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/SlimaineB/teu/internal/actions"
-	"github.com/SlimaineB/teu/internal/cache"
-	"github.com/SlimaineB/teu/internal/config"
-	"github.com/SlimaineB/teu/internal/glob"
-	"github.com/SlimaineB/teu/internal/kube"
-	"github.com/SlimaineB/teu/internal/search"
+	"github.com/SlimaineB/hop/internal/actions"
+	"github.com/SlimaineB/hop/internal/cache"
+	"github.com/SlimaineB/hop/internal/config"
+	"github.com/SlimaineB/hop/internal/glob"
+	"github.com/SlimaineB/hop/internal/kube"
+	"github.com/SlimaineB/hop/internal/search"
 )
 
 type Service struct {

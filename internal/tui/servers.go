@@ -12,8 +12,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/SlimaineB/teu/internal/actions"
-	"github.com/SlimaineB/teu/internal/servers"
+	"github.com/SlimaineB/hop/internal/actions"
+	"github.com/SlimaineB/hop/internal/servers"
 )
 
 type ServerOptions struct {
@@ -465,7 +465,7 @@ func (m ServerModel) View() string {
 }
 
 func (m ServerModel) headerView(width int) string {
-	title := styleTitle.Render("teu") + styleSubtitle.Render("  ·  VMs & servers")
+	title := styleTitle.Render("hop") + styleSubtitle.Render("  ·  VMs & servers")
 	var queryLine string
 	if m.editing {
 		queryLine = m.input.View()
@@ -619,7 +619,7 @@ func (m ServerModel) footerView(width int) string {
 
 func (m ServerModel) helpView() string {
 	lines := []string{
-		styleTitle.Render("teu · VMs & servers"),
+		styleTitle.Render("hop · VMs & servers"),
 		"",
 		styleHelpKey.Render("↑↓ / j k") + styleDim.Render("     move selection"),
 		styleHelpKey.Render("/ or i") + styleDim.Render("      edit search tags"),

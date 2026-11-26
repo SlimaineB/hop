@@ -7,16 +7,16 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/SlimaineB/teu/internal/app"
-	"github.com/SlimaineB/teu/internal/kube"
-	"github.com/SlimaineB/teu/internal/search"
+	"github.com/SlimaineB/hop/internal/app"
+	"github.com/SlimaineB/hop/internal/kube"
+	"github.com/SlimaineB/hop/internal/search"
 )
 
 func TestViewModelRenders(t *testing.T) {
 	model := New(Options{})
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	view := updated.View()
-	if !strings.Contains(view, "teu") {
+	if !strings.Contains(view, "hop") {
 		t.Fatalf("view missing title: %q", view)
 	}
 	if !strings.Contains(view, "RESULTS") || !strings.Contains(view, "PREVIEW") {

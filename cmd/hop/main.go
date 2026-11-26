@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/SlimaineB/teu/internal/cli"
+	"github.com/SlimaineB/hop/internal/cli"
 )
 
 func main() {

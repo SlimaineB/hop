@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/SlimaineB/teu/internal/kube"
+	"github.com/SlimaineB/hop/internal/kube"
 )
 
 type Options struct {

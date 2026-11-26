@@ -3,9 +3,9 @@ package cli
 import (
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/SlimaineB/teu/internal/app"
-	"github.com/SlimaineB/teu/internal/config"
-	"github.com/SlimaineB/teu/internal/tui"
+	"github.com/SlimaineB/hop/internal/app"
+	"github.com/SlimaineB/hop/internal/config"
+	"github.com/SlimaineB/hop/internal/tui"
 )
 
 func (a *App) runTUI(service *app.Service, cfg *config.Config, query string) error {

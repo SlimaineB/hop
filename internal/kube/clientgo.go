@@ -14,8 +14,8 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/client-go/tools/clientcmd"
 
-	"github.com/SlimaineB/teu/internal/glob"
-	"github.com/SlimaineB/teu/internal/version"
+	"github.com/SlimaineB/hop/internal/glob"
+	"github.com/SlimaineB/hop/internal/version"
 )
 
 type Options struct {
@@ -117,7 +117,7 @@ func (p *ClientGoProvider) client(name string) (*kubernetes.Clientset, error) {
 		return nil, fmt.Errorf("context %s: %w", name, err)
 	}
 	restConfig.Timeout = p.options.RequestTimeout
-	restConfig.UserAgent = "teu/" + version.Version
+	restConfig.UserAgent = "hop/" + version.Version
 	restConfig.QPS = 50
 	restConfig.Burst = 100
 

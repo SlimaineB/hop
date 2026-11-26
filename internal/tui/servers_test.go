@@ -8,8 +8,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/SlimaineB/teu/internal/config"
-	"github.com/SlimaineB/teu/internal/servers"
+	"github.com/SlimaineB/hop/internal/config"
+	"github.com/SlimaineB/hop/internal/servers"
 )
 
 func testServerModel(t *testing.T) ServerModel {
@@ -35,7 +35,7 @@ func TestServerViewModelRenders(t *testing.T) {
 	model := testServerModel(t)
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	view := updated.View()
-	if !strings.Contains(view, "teu") || !strings.Contains(view, "VMs & servers") {
+	if !strings.Contains(view, "hop") || !strings.Contains(view, "VMs & servers") {
 		t.Fatalf("view missing title: %q", view)
 	}
 	if !strings.Contains(view, "SERVERS") || !strings.Contains(view, "select a server") {

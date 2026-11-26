@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/SlimaineB/teu/internal/config"
+	"github.com/SlimaineB/hop/internal/config"
 )
 
 type Registry struct {

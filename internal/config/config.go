@@ -12,11 +12,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/SlimaineB/teu/internal/glob"
+	"github.com/SlimaineB/hop/internal/glob"
 	"gopkg.in/yaml.v3"
 )
 
-const EnvConfig = "TEU_CONFIG"
+const EnvConfig = "HOP_CONFIG"
 
 var envPatterns = []struct {
 	env string
@@ -53,13 +53,13 @@ func Default() *Config {
 
 func DefaultPath() string {
 	if dir := os.Getenv("XDG_CONFIG_HOME"); dir != "" {
-		return filepath.Join(dir, "teu", "config.yaml")
+		return filepath.Join(dir, "hop", "config.yaml")
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return filepath.Join(".config", "teu", "config.yaml")
+		return filepath.Join(".config", "hop", "config.yaml")
 	}
-	return filepath.Join(home, ".config", "teu", "config.yaml")
+	return filepath.Join(home, ".config", "hop", "config.yaml")
 }
 
 func Load(explicitPath string) (*Config, string, error) {
@@ -557,8 +557,8 @@ func mappingValue(node *yaml.Node, key string) *yaml.Node {
 func writeConfigNode(configPath string, doc *yaml.Node, includeHeader bool) error {
 	var buf bytes.Buffer
 	if includeHeader {
-		buf.WriteString("# teu configuration\n")
-		buf.WriteString("# VM/server inventory can be added with: teu config server add NAME [user@host] [tags...]\n\n")
+		buf.WriteString("# hop configuration\n")
+		buf.WriteString("# VM/server inventory can be added with: hop config server add NAME [user@host] [tags...]\n\n")
 	}
 	encoder := yaml.NewEncoder(&buf)
 	encoder.SetIndent(2)
@@ -586,7 +586,7 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-const initTemplate = `# teu configuration
+const initTemplate = `# hop configuration
 # Search pods across every kubeconfig context, then jump to Grafana / k9s.
 #
 # Placeholders available in every URL/query template:
@@ -618,7 +618,7 @@ ui:
   theme: dark
 
 # SSH aliases from this file are discovered automatically. Add servers entries
-# to attach tags, metrics URLs and explicit SSH settings. 'teu supervision uat vm'
+# to attach tags, metrics URLs and explicit SSH settings. 'hop supervision uat vm'
 # searches VMs only and skips Kubernetes when the vm tag is present.
 ssh_config: ""              # default: ~/.ssh/config
 servers: []
@@ -628,8 +628,8 @@ servers: []
 #    metrics_url: "http://sup-uat-01:9100/metrics"
 #    health_url: "http://sup-uat-01:8080/healthz"
 
-# Browser shortcuts for 'teu link'. Keywords are matched against the command
-# arguments, so 'teu link jira' or 'teu link ticket' opens the same URL.
+# Browser shortcuts for 'hop link'. Keywords are matched against the command
+# arguments, so 'hop link jira' or 'hop link ticket' opens the same URL.
 shortcuts:
   - name: grafana
     keywords: [grafana, metrics, dashboards]
@@ -641,8 +641,8 @@ shortcuts:
     keywords: [jira, ticket, bug]
     url: "https://jira.example.com"
 
-# Issue providers. 'teu issue OPS-123' opens a ticket, 'teu issue new' creates
-# one. If several providers match, teu prompts a menu. Tokens come from the
+# Issue providers. 'hop issue OPS-123' opens a ticket, 'hop issue new' creates
+# one. If several providers match, hop prompts a menu. Tokens come from the
 # environment and are never stored in this file.
 issues:
   default_provider: ""

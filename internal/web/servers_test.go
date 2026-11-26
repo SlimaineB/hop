@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/SlimaineB/teu/internal/config"
-	"github.com/SlimaineB/teu/internal/servers"
+	"github.com/SlimaineB/hop/internal/config"
+	"github.com/SlimaineB/hop/internal/servers"
 )
 
 func TestAPIServersAndRedirect(t *testing.T) {

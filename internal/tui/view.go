@@ -8,8 +8,8 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/SlimaineB/teu/internal/app"
-	"github.com/SlimaineB/teu/internal/kube"
+	"github.com/SlimaineB/hop/internal/app"
+	"github.com/SlimaineB/hop/internal/kube"
 )
 
 func (m Model) View() string {
@@ -52,7 +52,7 @@ func (m Model) View() string {
 }
 
 func (m Model) headerView(width int) string {
-	title := styleTitle.Render("teu") + styleSubtitle.Render("  ·  pods, logs, metrics")
+	title := styleTitle.Render("hop") + styleSubtitle.Render("  ·  pods, logs, metrics")
 	var queryLine string
 	if m.editing {
 		queryLine = m.input.View()
@@ -282,7 +282,7 @@ func (m Model) helpView() string {
 		{"q", "quit"},
 	}
 	var lines []string
-	lines = append(lines, styleTitle.Render("teu · help"))
+	lines = append(lines, styleTitle.Render("hop · help"))
 	lines = append(lines, "")
 	lines = append(lines, styleSection.Render("SEARCH"))
 	lines = append(lines,

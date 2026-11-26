@@ -10,8 +10,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/SlimaineB/teu/internal/actions"
-	"github.com/SlimaineB/teu/internal/config"
+	"github.com/SlimaineB/hop/internal/actions"
+	"github.com/SlimaineB/hop/internal/config"
 )
 
 type shortcutHit struct {
@@ -27,7 +27,7 @@ func (a *App) newLinkCommand() *cobra.Command {
 		Use:     "link [keywords...]",
 		Aliases: []string{"links"},
 		Short:   "Open a configured browser shortcut",
-		Long: `Open a browser shortcut from the teu config.
+		Long: `Open a browser shortcut from the hop config.
 
 Shortcuts are matched by name, keywords, description, and URL.
 Use --list to see available shortcuts, or --print to output the URL.`,
@@ -39,7 +39,7 @@ Use --list to see available shortcuts, or --print to output the URL.`,
 			}
 			if len(cfg.Shortcuts) == 0 {
 				fmt.Fprintln(cmd.OutOrStdout(), "no shortcuts configured")
-				fmt.Fprintln(cmd.OutOrStdout(), "add one with: teu config shortcut add grafana https://grafana.example.com metrics dashboards")
+				fmt.Fprintln(cmd.OutOrStdout(), "add one with: hop config shortcut add grafana https://grafana.example.com metrics dashboards")
 				return nil
 			}
 			hits := matchShortcuts(cfg.Shortcuts, args)
@@ -47,7 +47,7 @@ Use --list to see available shortcuts, or --print to output the URL.`,
 				return printShortcuts(cmd, hits, asJSON)
 			}
 			if len(hits) == 0 {
-				return fmt.Errorf("no shortcut matches %q; run 'teu link --list'", strings.Join(args, " "))
+				return fmt.Errorf("no shortcut matches %q; run 'hop link --list'", strings.Join(args, " "))
 			}
 			selected := hits[0]
 			if !validShortcutURL(selected.Shortcut.URL) {

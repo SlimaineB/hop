@@ -4,7 +4,7 @@
   const tagInput = document.getElementById("tag-input");
   if (!tagInput) return;
 
-  const helpers = window.teu;
+  const helpers = window.hop;
   const h = helpers.escapeHTML;
   const tagsEl = document.getElementById("tags");
   const input = document.getElementById("search-input");
@@ -218,8 +218,8 @@
       '<div class="error-panel"><strong>Search failed</strong>' +
       "<p>" + h(error.message || String(error)) + "</p>" +
       '<p class="muted">' + (serverMode
-        ? "Check your teu config and ~/.ssh/config."
-        : "Check your teu config, kubeconfigs, and cluster access.") + "</p></div>";
+        ? "Check your hop config and ~/.ssh/config."
+        : "Check your hop config, kubeconfigs, and cluster access.") + "</p></div>";
   }
 
   async function runSearch(options) {
@@ -275,7 +275,7 @@
         url.searchParams.delete("q");
       }
       window.history.replaceState(null, "", url);
-      document.title = query ? query + " · teu" : "teu";
+      document.title = query ? query + " · hop" : "hop";
     } catch (_) {
       // ignore
     }
@@ -363,8 +363,8 @@
       "<h3>No VMs found</h3>" +
       "<p>" + (query
         ? "No VM matches these tags. Remove a tag or check your SSH inventory."
-        : "No SSH hosts were found. Add entries in ~/.ssh/config or run teu config server add.") + "</p>" +
-      '<div class="tips"><span class="badge mono">teu config server add NAME user@host tag...</span>' +
+        : "No SSH hosts were found. Add entries in ~/.ssh/config or run hop config server add.") + "</p>" +
+      '<div class="tips"><span class="badge mono">hop config server add NAME user@host tag...</span>' +
       '<span class="badge mono">~/.ssh/config</span></div></div>';
   }
 
@@ -587,7 +587,7 @@
     const tips = query
       ? '<span class="badge mono">remove a tag</span><span class="badge mono">ns:dev</span>' +
         '<span class="badge mono">env:prod</span><span class="badge mono">label:app=api</span>'
-      : '<span class="badge mono">check your kubeconfigs</span><span class="badge mono">teu cache clear</span>';
+      : '<span class="badge mono">check your kubeconfigs</span><span class="badge mono">hop cache clear</span>';
     resultsBody.innerHTML =
       '<div class="empty"><div class="empty-mark">?</div>' +
       "<h3>No pods found</h3>" +

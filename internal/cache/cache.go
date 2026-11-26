@@ -23,7 +23,7 @@ func New() (*Store, error) {
 	if err != nil || base == "" {
 		base = os.TempDir()
 	}
-	dir := filepath.Join(base, "teu")
+	dir := filepath.Join(base, "hop")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
