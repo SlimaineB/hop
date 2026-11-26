@@ -1,0 +1,10 @@
+{{define "error.html"}}
+{{template "head" .}}
+<section class="error-page">
+  <div class="error-mark" aria-hidden="true">!</div>
+  <h1>{{.Title}}</h1>
+  <p>{{.Message}}</p>
+  <a class="button" href="/{{if .BackQuery}}?q={{urlquery .BackQuery}}{{end}}">← Back to search</a>
+</section>
+{{template "foot" .}}
+{{end}}

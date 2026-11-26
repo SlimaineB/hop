@@ -1,0 +1,106 @@
+{{define "server.html"}}
+{{template "head" .}}
+{{with .Server}}
+<nav class="breadcrumb" aria-label="Breadcrumb">
+  <a href="/?q={{urlquery $.BackQuery}}">← Search</a>
+  <span class="sep">/</span>
+  <span>{{dash .Env}}</span>
+  <span class="sep">/</span>
+  <span>{{.Name}}</span>
+</nav>
+
+<section class="pod-header">
+  <div class="pod-title">
+    <div class="pod-status status-ok">
+      <span class="dot" aria-hidden="true"></span>
+      VM
+    </div>
+    <h1>{{.Name}}</h1>
+    <div class="pod-badges">
+      {{if .Env}}<span class="badge env env-{{lower .Env}}">{{.Env}}</span>{{end}}
+      <span class="badge">{{dash .Source}}</span>
+      <span class="badge mono">{{.Host}}{{if .Port}}:{{.Port}}{{end}}</span>
+      {{range .Tags}}<span class="badge">{{.}}</span>{{end}}
+    </div>
+  </div>
+  <div class="pod-quick">
+    <button class="button" type="button" data-copy="{{$.SSHCommand}}">Copy SSH</button>
+    {{if .MetricsURL}}<a class="button ghost" href="{{safeURL .MetricsURL}}" target="_blank" rel="noopener">Metrics</a>{{end}}
+    {{if .HealthURL}}<a class="button ghost" href="{{safeURL .HealthURL}}" target="_blank" rel="noopener">Health</a>{{end}}
+  </div>
+</section>
+
+<div class="pod-grid">
+  <div class="col-main">
+    <section class="card">
+      <div class="card-head"><h2>SSH</h2></div>
+      <dl class="kv">
+        <div><dt>Target</dt><dd>{{dash .SSH}}</dd></div>
+        <div><dt>Host</dt><dd>{{dash .Host}}</dd></div>
+        <div><dt>User</dt><dd>{{dash .User}}</dd></div>
+        <div><dt>Port</dt><dd>{{.Port}}</dd></div>
+        <div><dt>ProxyJump</dt><dd>{{dash .ProxyJump}}</dd></div>
+        <div><dt>Command</dt><dd><code>{{$.SSHCommand}}</code></dd></div>
+      </dl>
+    </section>
+
+    {{with $.Check}}
+    <section class="card">
+      <div class="card-head">
+        <h2>Machine</h2>
+        <span class="pill {{machineClass .Machine}}">{{if .Machine.OK}}ok{{else}}error{{end}}</span>
+      </div>
+      {{if .Machine.Error}}
+      <p class="muted">{{.Machine.Error}}</p>
+      {{end}}
+      <dl class="kv kv-3">
+        <div><dt>Hostname</dt><dd>{{dash .Machine.Hostname}}</dd></div>
+        <div><dt>OS</dt><dd>{{dash .Machine.OS}}</dd></div>
+        <div><dt>Kernel</dt><dd>{{dash .Machine.Kernel}}</dd></div>
+        <div><dt>Uptime</dt><dd>{{dash .Machine.Uptime}}</dd></div>
+        <div><dt>Load</dt><dd>{{dash .Machine.Load}}</dd></div>
+        <div><dt>CPUs</dt><dd>{{.Machine.CPUs}}</dd></div>
+        <div><dt>Memory</dt><dd>{{fmtBytes .Machine.MemoryUsed}} / {{fmtBytes .Machine.MemoryTotal}}</dd></div>
+        <div><dt>Memory available</dt><dd>{{fmtBytes .Machine.MemoryAvailable}}</dd></div>
+        <div><dt>Disk</dt><dd>{{fmtBytes .Machine.DiskUsed}} / {{fmtBytes .Machine.DiskTotal}} ({{dash .Machine.DiskPercent}}%)</dd></div>
+      </dl>
+      {{if .Machine.FailedUnits}}
+      <h3 class="subhead">Failed units</h3>
+      <div class="chips">
+        {{range .Machine.FailedUnits}}<span class="chip mono">{{.}}</span>{{end}}
+      </div>
+      {{end}}
+    </section>
+    {{end}}
+  </div>
+
+  <div class="col-side">
+    {{with $.Check}}
+    <section class="card">
+      <div class="card-head">
+        <h2>Checks</h2>
+        <span class="muted">{{age .CheckedAt}}</span>
+      </div>
+      <h3 class="subhead">Metrics</h3>
+      <p><span class="pill {{httpClass .Metrics}}">{{httpText .Metrics}}</span></p>
+      {{if .Metrics.URL}}<p class="muted mono">{{.Metrics.URL}}</p>{{end}}
+      <h3 class="subhead">Health</h3>
+      <p><span class="pill {{httpClass .Health}}">{{httpText .Health}}</span></p>
+      {{if .Health.URL}}<p class="muted mono">{{.Health.URL}}</p>{{end}}
+    </section>
+    {{end}}
+
+    <section class="card">
+      <div class="card-head"><h2>Inventory</h2></div>
+      <dl class="kv">
+        <div><dt>Source</dt><dd>{{dash .Source}}</dd></div>
+        <div><dt>SSH checks</dt><dd>{{if .SSHChecks}}enabled{{else}}disabled{{end}}</dd></div>
+        <div><dt>Metrics URL</dt><dd class="mono">{{dash .MetricsURL}}</dd></div>
+        <div><dt>Health URL</dt><dd class="mono">{{dash .HealthURL}}</dd></div>
+      </dl>
+    </section>
+  </div>
+</div>
+{{end}}
+{{template "foot" .}}
+{{end}}

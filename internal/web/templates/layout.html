@@ -1,0 +1,40 @@
+{{define "head"}}
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>{{if .Title}}{{.Title}} · {{end}}teu</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <div class="ambient" aria-hidden="true"></div>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="teu home">
+      <span class="brand-mark" aria-hidden="true">o</span>
+      <span class="brand-text">
+        <span class="brand-name">teu</span>
+        <span class="brand-tag">find any pod, anywhere</span>
+      </span>
+    </a>
+    <div class="topbar-right">
+      <a class="nav-link" href="/?q=vm">VMs</a>
+      <span class="version" title="version">v{{version}}</span>
+    </div>
+  </header>
+  <main class="shell">
+{{end}}
+
+{{define "foot"}}
+  </main>
+  <footer class="footer">
+    <span>teu · local-first pods &amp; VMs finder</span>
+    <span class="footer-hint">Ctrl+C to stop the local server</span>
+  </footer>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <script src="/static/common.js" defer></script>
+  {{if .Script}}<script src="/static/{{.Script}}" defer></script>{{end}}
+</body>
+</html>
+{{end}}

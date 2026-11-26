@@ -1,0 +1,83 @@
+{{define "index.html"}}
+{{template "head" .}}
+<section class="hero">
+  <div class="hero-copy">
+    <p class="eyebrow">kubectl · k9s · grafana · loki · ssh</p>
+    <h1>Find the pod.<br><span>Open the right link.</span></h1>
+    <p class="lede">
+      Type a pod name, namespace, environment, or cluster.
+      Each space creates a tag. Add vm to search your SSH inventory instead.
+      Enter searches in parallel.
+    </p>
+  </div>
+  <div class="stats" id="stats" aria-label="Stats">
+    <div class="stat"><span class="stat-value" data-stat="total">—</span><span class="stat-label">pods</span></div>
+    <div class="stat"><span class="stat-value" data-stat="running">—</span><span class="stat-label">running</span></div>
+    <div class="stat"><span class="stat-value" data-stat="ready">—</span><span class="stat-label">ready</span></div>
+    <div class="stat stat-warn"><span class="stat-value" data-stat="not_ready">—</span><span class="stat-label">not ready</span></div>
+    <div class="stat"><span class="stat-value" data-stat="contexts">—</span><span class="stat-label">contexts</span></div>
+    <div class="stat stat-warn"><span class="stat-value" data-stat="restarts">—</span><span class="stat-label">restarts</span></div>
+  </div>
+</section>
+
+<section class="search-panel" aria-label="Search">
+  <div class="tag-input" id="tag-input">
+    <span class="search-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2"></path></svg>
+    </span>
+    <div class="tags" id="tags"></div>
+    <input
+      id="search-input"
+      class="search-input"
+      type="text"
+      value="{{.InitialQuery}}"
+      placeholder="pod1 ns1 env1… or supervision uat vm"
+      autocomplete="off"
+      autocapitalize="off"
+      spellcheck="false"
+      aria-label="Search by tags"
+    >
+    <button id="search-btn" class="primary" type="button">
+      <span>Search</span>
+      <kbd>↵</kbd>
+    </button>
+  </div>
+  <div class="search-hints">
+    <span><kbd>Space</kbd> or <kbd>Tab</kbd> separates tags</span>
+    <span><kbd>Enter</kbd> starts the search</span>
+    <span><kbd>⌫</kbd> removes the last tag</span>
+    <span class="hint-mono">ns:dev · env:prod · label:app=api · 12h 14h · -2h · vm supervision</span>
+  </div>
+</section>
+
+{{if .Shortcuts}}
+<section class="shortcut-bar" aria-label="Browser shortcuts">
+  <span class="shortcut-label">Browser shortcuts</span>
+  {{range .Shortcuts}}
+  <a class="shortcut-chip" href="{{safeURL .URL}}" target="_blank" rel="noopener" title="{{if .Description}}{{.Description}}{{else}}{{.URL}}{{end}}">
+    <span>{{.Name}}</span>
+    {{if .Description}}<small>{{.Description}}</small>{{end}}
+  </a>
+  {{end}}
+</section>
+{{end}}
+
+<section class="meta-bar" id="meta-bar" hidden></section>
+
+<section class="context-pills" id="context-pills" hidden aria-label="Contexts"></section>
+
+<section class="results">
+  <div class="results-head">
+    <div>
+      <h2>Results</h2>
+      <span class="result-count" id="result-count"></span>
+    </div>
+    <button id="refresh-btn" class="ghost" type="button">
+      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"></path><path d="M21 3v6h-6"></path></svg>
+      Refresh
+    </button>
+  </div>
+  <div id="results-body" class="results-body"></div>
+</section>
+{{template "foot" .}}
+{{end}}

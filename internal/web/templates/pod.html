@@ -1,0 +1,340 @@
+{{define "pod.html"}}
+{{template "head" .}}
+{{with .Detail}}
+<nav class="breadcrumb" aria-label="Breadcrumb">
+  <a href="/?q={{urlquery $.BackQuery}}">← Search</a>
+  <span class="sep">/</span>
+  <span>{{.Context.Display}}</span>
+  <span class="sep">/</span>
+  <span>{{.Pod.Pod.Namespace}}</span>
+</nav>
+
+<section class="pod-header">
+  <div class="pod-title">
+    <div class="pod-status status-{{statusClass .Pod.Pod}}">
+      <span class="dot" aria-hidden="true"></span>
+      {{statusText .Pod.Pod}}
+    </div>
+    <h1>{{.Pod.Pod.Name}}</h1>
+    <div class="pod-badges">
+      {{if .Context.Env}}<span class="badge env env-{{lower .Context.Env}}">{{.Context.Env}}</span>{{end}}
+      <span class="badge">{{.Context.Display}}</span>
+      <span class="badge">{{.Pod.Pod.Namespace}}</span>
+      <span class="badge">age {{age .Pod.Pod.StartTime}}</span>
+      {{if .Pod.Pod.OwnerName}}<span class="badge">{{.Pod.Pod.OwnerKind}}/{{.Pod.Pod.OwnerName}}</span>{{end}}
+      {{if $.RangeLabel}}<span class="badge range">logs {{$.RangeLabel}}</span>{{end}}
+    </div>
+  </div>
+  <div class="pod-quick">
+    {{if .Links.GrafanaPod}}<a class="button" href="{{.Links.GrafanaPod}}" target="_blank" rel="noopener">Grafana</a>{{end}}
+    {{if .Links.LokiExplore}}<a class="button" href="{{.Links.LokiExplore}}" target="_blank" rel="noopener">Loki</a>{{end}}
+    {{if .Links.MimirExplore}}<a class="button" href="{{.Links.MimirExplore}}" target="_blank" rel="noopener">Mimir</a>{{end}}
+    <button class="button ghost" type="button" data-copy="{{$.K9s}}">Copy k9s</button>
+  </div>
+</section>
+
+{{if .Pod.Topology}}
+<section class="card topology-card">
+  <div class="card-head">
+    <h2>Topology</h2>
+    <span class="muted">click a node to inspect · scroll horizontally</span>
+  </div>
+  <div class="topology-layout">
+    <div class="topology-scroll">
+      <div id="topology-graph" class="topology-graph" aria-label="Pod topology"></div>
+    </div>
+    <aside id="topology-detail" class="topology-detail">
+      <p class="muted">Select a node.</p>
+    </aside>
+  </div>
+  {{if .Pod.Topology.Warnings}}
+  <details class="topology-warnings">
+    <summary>Some topology resources could not be loaded</summary>
+    <ul>{{range .Pod.Topology.Warnings}}<li class="muted">{{.}}</li>{{end}}</ul>
+  </details>
+  {{end}}
+  <script type="application/json" id="topology-data">{{json .Pod.Topology}}</script>
+</section>
+{{end}}
+
+<div class="pod-grid">
+  <div class="col-main">
+    <section class="card">
+      <div class="card-head"><h2>Overview</h2></div>
+      <dl class="kv">
+        <div><dt>Context</dt><dd>{{.Context.Name}}</dd></div>
+        <div><dt>Cluster</dt><dd>{{.Pod.Pod.Cluster}}</dd></div>
+        <div><dt>Env</dt><dd>{{if .Context.Env}}{{.Context.Env}}{{else}}—{{end}}</dd></div>
+        <div><dt>Namespace</dt><dd>{{.Pod.Pod.Namespace}}</dd></div>
+        <div><dt>Owner</dt><dd>{{if .Pod.Pod.OwnerName}}{{.Pod.Pod.OwnerKind}}/{{.Pod.Pod.OwnerName}}{{else}}—{{end}}</dd></div>
+        <div><dt>Node</dt><dd>{{if .Pod.Pod.Node}}{{.Pod.Pod.Node}}{{else}}—{{end}}</dd></div>
+        <div><dt>Pod IP</dt><dd>{{if .Pod.Pod.PodIP}}{{.Pod.Pod.PodIP}}{{else}}—{{end}}</dd></div>
+        <div><dt>Host IP</dt><dd>{{if .Pod.HostIP}}{{.Pod.HostIP}}{{else}}—{{end}}</dd></div>
+        <div><dt>QoS</dt><dd>{{if .Pod.Pod.QoSClass}}{{.Pod.Pod.QoSClass}}{{else}}—{{end}}</dd></div>
+        <div><dt>Service account</dt><dd>{{if .Pod.ServiceAccount}}{{.Pod.ServiceAccount}}{{else}}—{{end}}</dd></div>
+        <div><dt>Start time</dt><dd>{{fmtTime .Pod.Pod.StartTime}} <span class="muted">({{age .Pod.Pod.StartTime}})</span></dd></div>
+        <div><dt>Restarts</dt><dd>{{.Pod.Pod.Restarts}}</dd></div>
+      </dl>
+    </section>
+
+    {{if .Pod.Node}}
+    <section class="card" id="node">
+      <div class="card-head">
+        <h2>Node</h2>
+        <span class="pill {{if .Pod.Node.Ready}}ok{{else}}err{{end}}">{{if .Pod.Node.Ready}}Ready{{else}}NotReady{{end}}</span>
+      </div>
+      <dl class="kv kv-3">
+        <div><dt>Name</dt><dd>{{.Pod.Node.Name}}</dd></div>
+        <div><dt>Hostname</dt><dd>{{if .Pod.Node.Hostname}}{{.Pod.Node.Hostname}}{{else}}—{{end}}</dd></div>
+        <div><dt>Age</dt><dd>{{age .Pod.Node.CreationTimestamp}} <span class="muted">({{fmtTime .Pod.Node.CreationTimestamp}})</span></dd></div>
+        <div><dt>Internal IP</dt><dd>{{if .Pod.Node.InternalIP}}<code>{{.Pod.Node.InternalIP}}</code>{{else}}—{{end}}</dd></div>
+        <div><dt>External IP</dt><dd>{{if .Pod.Node.ExternalIP}}<code>{{.Pod.Node.ExternalIP}}</code>{{else}}—{{end}}</dd></div>
+        <div><dt>Pod CIDR</dt><dd>{{if .Pod.Node.PodCIDRs}}{{range .Pod.Node.PodCIDRs}}<code>{{.}}</code> {{end}}{{else if .Pod.Node.PodCIDR}}<code>{{.Pod.Node.PodCIDR}}</code>{{else}}—{{end}}</dd></div>
+        <div><dt>OS</dt><dd>{{if .Pod.Node.OperatingSystem}}{{.Pod.Node.OperatingSystem}}{{else}}—{{end}}</dd></div>
+        <div><dt>Architecture</dt><dd>{{if .Pod.Node.Architecture}}{{.Pod.Node.Architecture}}{{else}}—{{end}}</dd></div>
+        <div><dt>Kernel</dt><dd>{{if .Pod.Node.KernelVersion}}<code>{{.Pod.Node.KernelVersion}}</code>{{else}}—{{end}}</dd></div>
+        <div><dt>Runtime</dt><dd>{{if .Pod.Node.ContainerRuntime}}<code>{{.Pod.Node.ContainerRuntime}}</code>{{else}}—{{end}}</dd></div>
+        <div><dt>Kubelet</dt><dd>{{if .Pod.Node.KubeletVersion}}<code>{{.Pod.Node.KubeletVersion}}</code>{{else}}—{{end}}</dd></div>
+        <div><dt>OS image</dt><dd title="{{.Pod.Node.OSImage}}">{{if .Pod.Node.OSImage}}{{truncate .Pod.Node.OSImage 42}}{{else}}—{{end}}</dd></div>
+        <div><dt>Provider ID</dt><dd title="{{.Pod.Node.ProviderID}}">{{if .Pod.Node.ProviderID}}{{truncate .Pod.Node.ProviderID 42}}{{else}}—{{end}}</dd></div>
+      </dl>
+      <h3 class="subhead">Capacity / allocatable</h3>
+      <div class="chips">
+        <span class="chip"><b>CPU</b> {{if .Pod.Node.AllocatableCPU}}{{.Pod.Node.AllocatableCPU}}{{else}}?{{end}} / {{if .Pod.Node.CapacityCPU}}{{.Pod.Node.CapacityCPU}}{{else}}?{{end}}</span>
+        <span class="chip"><b>Memory</b> {{if .Pod.Node.AllocatableMemory}}{{.Pod.Node.AllocatableMemory}}{{else}}?{{end}} / {{if .Pod.Node.CapacityMemory}}{{.Pod.Node.CapacityMemory}}{{else}}?{{end}}</span>
+        <span class="chip"><b>Pods</b> {{if .Pod.Node.AllocatablePods}}{{.Pod.Node.AllocatablePods}}{{else}}?{{end}} / {{if .Pod.Node.CapacityPods}}{{.Pod.Node.CapacityPods}}{{else}}?{{end}}</span>
+      </div>
+      {{if .Pod.Node.Conditions}}
+      <h3 class="subhead">Conditions</h3>
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr><th>Type</th><th>Status</th><th>Reason</th><th>Message</th><th>Since</th></tr></thead>
+          <tbody>
+            {{range .Pod.Node.Conditions}}
+            <tr>
+              <td>{{.Type}}</td>
+              <td>{{if eq .Status "True"}}<span class="pill {{if eq .Type "Ready"}}ok{{else}}warn{{end}}">{{.Status}}</span>{{else}}<span class="pill muted">{{.Status}}</span>{{end}}</td>
+              <td>{{if .Reason}}{{.Reason}}{{else}}<span class="muted">—</span>{{end}}</td>
+              <td class="message">{{if .Message}}{{.Message}}{{else}}<span class="muted">—</span>{{end}}</td>
+              <td class="muted">{{age .LastTransitionTime}}</td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+      {{end}}
+      {{if .Pod.Node.Taints}}
+      <h3 class="subhead">Taints</h3>
+      <div class="chips">
+        {{range .Pod.Node.Taints}}<span class="chip mono"><b>{{.Key}}</b>{{if .Value}}={{.Value}}{{end}}:{{.Effect}}</span>{{end}}
+      </div>
+      {{end}}
+      {{if .Pod.Node.Labels}}
+      <details class="node-labels">
+        <summary>Node labels <span class="muted">({{len .Pod.Node.Labels}})</span></summary>
+        <div class="chips">
+          {{range $k := keys .Pod.Node.Labels}}<span class="chip mono"><b>{{$k}}</b>={{index $.Detail.Pod.Node.Labels $k}}</span>{{end}}
+        </div>
+      </details>
+      {{end}}
+    </section>
+    {{else if .Pod.NodeError}}
+    <section class="card">
+      <div class="card-head"><h2>Node</h2></div>
+      <p class="muted">Node details unavailable: {{.Pod.NodeError}}</p>
+    </section>
+    {{end}}
+
+    <section class="card">
+      <div class="card-head">
+        <h2>Containers</h2>
+        <span class="muted">{{.Pod.Pod.ReadyContainers}}/{{.Pod.Pod.ContainersCount}} ready</span>
+      </div>
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr><th>Name</th><th>State</th><th>Ready</th><th>Restarts</th><th>Ports</th><th>Image</th></tr>
+          </thead>
+          <tbody>
+            {{range .Pod.Pod.Containers}}
+            <tr>
+              <td><strong>{{.Name}}</strong>{{if .StateReason}}<div class="muted small">{{.StateReason}}</div>{{end}}</td>
+              <td><span class="state state-{{lower .State}}">{{if .State}}{{.State}}{{else}}unknown{{end}}</span></td>
+              <td>{{if .Ready}}<span class="pill ok">true</span>{{else}}<span class="pill warn">false</span>{{end}}</td>
+              <td>{{if gt .Restarts 0}}<span class="pill warn">{{.Restarts}}</span>{{else}}<span class="muted">0</span>{{end}}</td>
+              <td>
+                {{range .Ports}}<span class="badge mono">{{.ContainerPort}}/{{.Protocol}}</span>{{else}}<span class="muted">—</span>{{end}}
+              </td>
+              <td><code class="image">{{.Image}}</code></td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>Conditions</h2>
+        <span class="muted">{{len .Pod.Conditions}}</span>
+      </div>
+      {{if .Pod.Conditions}}
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr><th>Type</th><th>Status</th><th>Reason</th><th>Message</th><th>Since</th></tr></thead>
+          <tbody>
+            {{range .Pod.Conditions}}
+            <tr>
+              <td>{{.Type}}</td>
+              <td>{{if eq .Status "True"}}<span class="pill ok">{{.Status}}</span>{{else}}<span class="pill warn">{{.Status}}</span>{{end}}</td>
+              <td>{{if .Reason}}{{.Reason}}{{else}}<span class="muted">—</span>{{end}}</td>
+              <td class="message">{{if .Message}}{{.Message}}{{else}}<span class="muted">—</span>{{end}}</td>
+              <td class="muted">{{age .LastTransitionTime}}</td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+      {{else}}<p class="muted">No conditions.</p>{{end}}
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>Events</h2>
+        <span class="muted">{{len .Pod.Events}}</span>
+      </div>
+      {{if .Pod.Events}}
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr><th>Type</th><th>Reason</th><th>Age</th><th>Source</th><th>Message</th></tr></thead>
+          <tbody>
+            {{range .Pod.Events}}
+            <tr>
+              <td><span class="pill {{if eq .Type "Warning"}}warn{{else}}muted{{end}}">{{.Type}}</span></td>
+              <td>{{.Reason}}</td>
+              <td class="muted">{{age .LastSeen}}</td>
+              <td class="muted">{{if .Source}}{{.Source}}{{else}}—{{end}}</td>
+              <td class="message">{{.Message}}{{if gt .Count 1}} <span class="muted">×{{.Count}}</span>{{end}}</td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+      {{else}}<p class="muted">No recent events.</p>{{end}}
+    </section>
+
+    <section class="card">
+      <details>
+        <summary>
+          <span>Full describe</span>
+          <span class="summary-actions"><button class="icon-btn" type="button" data-copy="{{.Pod.Describe}}" title="Copy describe" aria-label="Copy describe">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>
+          </button></span>
+        </summary>
+        <pre class="pre">{{.Pod.Describe}}</pre>
+      </details>
+    </section>
+
+    <section class="card">
+      <details>
+        <summary>
+          <span>Pod YAML</span>
+          <span class="summary-actions"><button class="icon-btn" type="button" data-copy="{{.Pod.YAML}}" title="Copy YAML" aria-label="Copy YAML">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>
+          </button></span>
+        </summary>
+        <pre class="pre">{{.Pod.YAML}}</pre>
+      </details>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><h2>Labels &amp; annotations</h2></div>
+      <h3 class="subhead">Labels</h3>
+      {{if .Pod.Labels}}
+      <div class="chips">
+        {{range $k := keys .Pod.Labels}}<span class="chip mono"><b>{{$k}}</b>={{index $.Detail.Pod.Labels $k}}</span>{{end}}
+      </div>
+      {{else}}<p class="muted">No labels.</p>{{end}}
+      <h3 class="subhead">Annotations</h3>
+      {{if .Pod.Annotations}}
+      <div class="chips">
+        {{range $k := keys .Pod.Annotations}}<span class="chip mono" title="{{index $.Detail.Pod.Annotations $k}}"><b>{{$k}}</b>={{truncate (index $.Detail.Pod.Annotations $k) 160}}</span>{{end}}
+      </div>
+      {{else}}<p class="muted">No annotations.</p>{{end}}
+    </section>
+  </div>
+
+  <aside class="col-side">
+    <section class="card links-card">
+      <div class="card-head"><h2>Observability</h2></div>
+      {{if $.RangeLabel}}<p class="muted small range-note">Logs/metrics range: <b>{{$.RangeLabel}}</b></p>{{end}}
+      {{if hasLinks .Links}}
+        {{if .Links.GrafanaPod}}<a class="link-row" href="{{.Links.GrafanaPod}}" target="_blank" rel="noopener"><span>Grafana · pod</span><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17 17 7"></path><path d="M8 7h9v9"></path></svg></a>{{end}}
+        {{if .Links.GrafanaLogs}}<a class="link-row" href="{{.Links.GrafanaLogs}}" target="_blank" rel="noopener"><span>Grafana · logs</span><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17 17 7"></path><path d="M8 7h9v9"></path></svg></a>{{end}}
+        {{if .Links.GrafanaDashboard}}<a class="link-row" href="{{.Links.GrafanaDashboard}}" target="_blank" rel="noopener"><span>Grafana · dashboard</span><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17 17 7"></path><path d="M8 7h9v9"></path></svg></a>{{end}}
+        {{if .Links.LokiExplore}}<a class="link-row" href="{{.Links.LokiExplore}}" target="_blank" rel="noopener"><span>Loki · explore</span><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17 17 7"></path><path d="M8 7h9v9"></path></svg></a>{{end}}
+        {{if .Links.MimirExplore}}<a class="link-row" href="{{.Links.MimirExplore}}" target="_blank" rel="noopener"><span>Mimir · explore</span><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17 17 7"></path><path d="M8 7h9v9"></path></svg></a>{{end}}
+        {{if .Links.LokiQuery}}
+        <div class="query-block">
+          <div class="query-head"><span>Loki query</span><button class="icon-btn" type="button" data-copy="{{.Links.LokiQuery}}" title="Copy Loki query" aria-label="Copy Loki query"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg></button></div>
+          <code class="query">{{.Links.LokiQuery}}</code>
+        </div>
+        {{end}}
+        {{if .Links.MimirQuery}}
+        <div class="query-block">
+          <div class="query-head"><span>Mimir query</span><button class="icon-btn" type="button" data-copy="{{.Links.MimirQuery}}" title="Copy Mimir query" aria-label="Copy Mimir query"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg></button></div>
+          <code class="query">{{.Links.MimirQuery}}</code>
+        </div>
+        {{end}}
+      {{else}}
+        <p class="muted">No links configured. Add <code>links.grafana</code>, <code>links.loki</code>, or <code>links.mimir</code> templates to your teu config.</p>
+      {{end}}
+    </section>
+
+    <section class="card commands-card">
+      <div class="card-head"><h2>Commands</h2></div>
+      {{range .Commands}}
+      <div class="command-row">
+        <div class="command-meta">
+          <span class="cmd-label">{{.Label}}</span>
+          {{if .Description}}<span class="cmd-desc">{{.Description}}</span>{{end}}
+        </div>
+        <code class="command">{{.Command}}</code>
+        <button class="icon-btn" type="button" data-copy="{{.Command}}" title="Copy" aria-label="Copy {{.Label}}">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>
+        </button>
+      </div>
+      {{end}}
+    </section>
+
+    {{if .Pod.OwnerChain}}
+    <section class="card">
+      <div class="card-head"><h2>Owner chain</h2></div>
+      <div class="chain">
+        {{range .Pod.OwnerChain}}<span class="chip"><b>{{.Kind}}</b> {{.Name}}</span>{{end}}
+      </div>
+    </section>
+    {{end}}
+
+    {{if .Pod.Volumes}}
+    <section class="card">
+      <div class="card-head"><h2>Volumes</h2></div>
+      <div class="chips">
+        {{range .Pod.Volumes}}<span class="chip"><b>{{.Name}}</b> · {{.Type}}</span>{{end}}
+      </div>
+    </section>
+    {{end}}
+
+    {{if .Pod.NodeSelectors}}
+    <section class="card">
+      <div class="card-head"><h2>Node selectors</h2></div>
+      <div class="chips">
+        {{range $k := keys .Pod.NodeSelectors}}<span class="chip mono"><b>{{$k}}</b>={{index $.Detail.Pod.NodeSelectors $k}}</span>{{end}}
+      </div>
+    </section>
+    {{end}}
+  </aside>
+</div>
+{{end}}
+{{template "foot" .}}
+{{end}}
