@@ -3,7 +3,6 @@ package web
 import (
 	"context"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -24,15 +23,10 @@ func (s *Server) handleServers(w http.ResponseWriter, r *http.Request) {
 	if !onlyGET(w, r) {
 		return
 	}
-	query := strings.TrimSpace(r.URL.Query().Get("q"))
-	if !servers.HasVMSelector(query) {
-		if query == "" {
-			query = "vm"
-		} else {
-			query += " vm"
-		}
-	}
-	http.Redirect(w, r, "/?q="+url.QueryEscape(query), http.StatusTemporaryRedirect)
+	s.render(w, http.StatusOK, "servers.html", dashboardData{
+		Title:  "Servers",
+		Script: "servers.js",
+	})
 }
 
 func (s *Server) handleServer(w http.ResponseWriter, r *http.Request) {

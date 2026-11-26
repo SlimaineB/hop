@@ -32,6 +32,8 @@ No daemon, no fzf, no copy-pasting pod names, SSH hosts, or ticket keys.
 | Fuzzy search | Free-form terms, tag filters, relevance score |
 | Time range | `12h 14h`, `-2h`, `from:… to:…` for logs and metrics |
 | TUI | List, pod preview, node info, keyboard actions |
+| Kubernetes dashboard | Fleet KPIs, env/app/cluster/namespace health, nodes, triage |
+| Server dashboard | Inventory, HTTP/SSH checks, memory, disk, failed units |
 | Local web UI | Fast search, pod page, node, events, YAML |
 | Actions | k9s, logs, describe, node, browser, clipboard |
 | Observability | Grafana, Loki, and Mimir templates per workspace |
@@ -61,8 +63,9 @@ SCORE  POD                          NAMESPACE      CONTEXT  ENV  STATUS   AGE  N
 99%    poddy-headscale-8659df7bc9   poddy-system   default   -    Running  3h   slim
 ```
 
-With no arguments, `hop` opens the web UI. With arguments, it opens the TUI
-when stdin and stdout are terminals; otherwise it prints a table.
+With no arguments, `hop` opens the infrastructure dashboard in the web UI.
+With arguments, it opens the TUI when stdin and stdout are terminals;
+otherwise it prints a table.
 
 ## Installation
 
@@ -104,8 +107,9 @@ hop all git hop
 hop all pkg nginx
 hop all vm supervision
 
-# Local web UI
+# Infrastructure dashboard
 hop
+hop web
 
 # Pod TUI
 hop pod poddy
@@ -267,10 +271,10 @@ If `metrics_url` is omitted, `hop` checks
 read-only SSH script (`uptime`, load, CPU, `free`, `df`, `systemctl --failed`)
 with `BatchMode=yes`. Disable them per server with `ssh_checks: false`.
 
-The unified web UI also lists VMs when the query contains `vm`: the same search
-box switches to server results. `/servers?q=…` redirects there. Server detail
-pages are served at `/server?name=…`; APIs are `/api/servers` and
-`/api/server` (add `check=1` to run checks).
+The unified web UI also lists VMs when the query contains `vm`, but the
+dedicated `/servers` page is the primary server view. Server detail pages are
+served at `/server?name=…`; APIs are `/api/servers` and `/api/server` (add
+`check=1` to run checks).
 
 ## Cockpit search
 
@@ -471,10 +475,27 @@ hop web --no-open 'api 12h 14h'
 ```
 
 The UI listens on `127.0.0.1` by default. `--port 0` picks a free port.
-Configured browser shortcuts appear above the results, so the same page can
-search pods, inspect VMs, and open Grafana / Swagger / Jira links.
 
-It also exposes:
+The web UI has three clear entry points:
+
+- `/` is the Kubernetes dashboard: pod readiness, restarts, CPU and memory from
+  metrics-server, grouping by environment/application/cluster/namespace,
+  per-group health, node capacity, and a triage list;
+- `/servers` is the server dashboard: inventory, HTTP/SSH checks, memory, disk,
+  failed units, and a local filter;
+- `/search` is the unified search across pods, VMs, repositories, packages,
+  tickets, and shortcuts.
+
+Configured browser shortcuts still appear on the search page. A theme toggle in
+the header switches between dark and light mode and remembers the choice in
+`localStorage` (first visit follows the OS preference).
+
+The dashboard APIs are:
+
+- `/api/dashboard` for the Kubernetes overview (`?refresh=1` bypasses caches);
+- `/api/dashboard/servers` for asynchronous server checks.
+
+The UI also exposes:
 
 - `/healthz` for health checks;
 - `/api/unified` for grouped cockpit sections and live polling;
@@ -809,6 +830,7 @@ internal/config       YAML config, workspaces, resolution, templates
 internal/kube         kubeconfig, contexts, pods, nodes, client-go
 internal/search       tag and time parsing, fuzzy engine
 internal/app          snapshots, cache, ranking, orchestration
+internal/dashboard    Kubernetes overview, metrics, grouping, server checks
 internal/tui          Bubble Tea
 internal/servers      SSH config, VM inventory, tag search, HTTP/SSH checks
 internal/providers    ticket provider interfaces, registry, Jira adapter

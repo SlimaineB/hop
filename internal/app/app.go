@@ -30,6 +30,10 @@ type Service struct {
 	snapshot   *Snapshot
 	candidates []search.Candidate
 	podsByID   map[string]kube.Pod
+
+	metricsMu sync.Mutex
+	metrics   *kube.MetricsResult
+	metricsAt time.Time
 }
 
 type Snapshot struct {

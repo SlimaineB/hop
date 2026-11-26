@@ -16,6 +16,7 @@ import (
 	"github.com/SlimaineB/hop/internal/actions"
 	"github.com/SlimaineB/hop/internal/app"
 	"github.com/SlimaineB/hop/internal/config"
+	"github.com/SlimaineB/hop/internal/dashboard"
 	"github.com/SlimaineB/hop/internal/kube"
 	"github.com/SlimaineB/hop/internal/plugin"
 	"github.com/SlimaineB/hop/internal/plugins"
@@ -32,6 +33,7 @@ type webLauncher struct {
 	servers   *servers.Service
 	providers *providers.Set
 	plugins   *plugin.Registry
+	dashboard *dashboard.Service
 	stats     func() app.Stats
 
 	mu     sync.Mutex
@@ -67,6 +69,11 @@ func newWebLauncher(service *app.Service, cfg *config.Config) *webLauncher {
 		Shortcuts:        shortcuts,
 		OnImagesDetected: func(refs []string) { registryService.SetImages(refs...) },
 	})
+	var podSource dashboard.PodSource
+	if service != nil {
+		podSource = service
+	}
+	launcher.dashboard = dashboard.New(podSource, launcher.servers, cfg)
 	launcher.stats = func() app.Stats {
 		if service == nil {
 			return app.Stats{}
@@ -95,6 +102,7 @@ func (l *webLauncher) ensure() (string, error) {
 		LiveLimit: l.cfg.Search.LiveLimit,
 		Registry:  l.plugins,
 		Stats:     l.stats,
+		Dashboard: l.dashboard,
 	})
 	if err != nil {
 		return "", err
@@ -130,7 +138,7 @@ func (l *webLauncher) OpenQuery(query string) (string, error) {
 	}
 	target := base
 	if query != "" {
-		target += "/?q=" + url.QueryEscape(query)
+		target += "/search?q=" + url.QueryEscape(query)
 	}
 	return target, actions.OpenBrowser(target)
 }
@@ -173,7 +181,7 @@ func (a *App) serveWeb(cmd *cobra.Command, service *app.Service, cfg *config.Con
 	}
 	target := base
 	if query != "" {
-		target += "/?q=" + url.QueryEscape(query)
+		target += "/search?q=" + url.QueryEscape(query)
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "hop UI: %s\n", target)
 	if !a.flags.noOpen && cfg.UI.BrowserEnabled() {

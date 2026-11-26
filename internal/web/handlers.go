@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -38,11 +39,72 @@ type errorData struct {
 	BackQuery string
 }
 
+type dashboardData struct {
+	Title  string
+	Script string
+}
+
+func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
+	if !onlyGET(w, r) {
+		return
+	}
+	if r.URL.Path != "/" && r.URL.Path != "/dashboard" {
+		http.NotFound(w, r)
+		return
+	}
+	if query := strings.TrimSpace(r.URL.Query().Get("q")); query != "" {
+		http.Redirect(w, r, "/search?q="+url.QueryEscape(query), http.StatusTemporaryRedirect)
+		return
+	}
+	s.render(w, http.StatusOK, "dashboard.html", dashboardData{
+		Title:  "Overview",
+		Script: "dashboard.js",
+	})
+}
+
+func (s *Server) handleAPIDashboard(w http.ResponseWriter, r *http.Request) {
+	if !onlyGET(w, r) {
+		return
+	}
+	if s.dashboard == nil {
+		writeError(w, http.StatusServiceUnavailable, errText("dashboard unavailable"))
+		return
+	}
+	force, _ := strconv.ParseBool(r.URL.Query().Get("refresh"))
+	ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
+	defer cancel()
+	overview, err := s.dashboard.Overview(ctx, force)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, overview)
+}
+
+func (s *Server) handleAPIDashboardServers(w http.ResponseWriter, r *http.Request) {
+	if !onlyGET(w, r) {
+		return
+	}
+	if s.dashboard == nil {
+		writeError(w, http.StatusServiceUnavailable, errText("dashboard unavailable"))
+		return
+	}
+	force, _ := strconv.ParseBool(r.URL.Query().Get("refresh"))
+	ctx, cancel := context.WithTimeout(r.Context(), 50*time.Second)
+	defer cancel()
+	cards, err := s.dashboard.ServerChecks(ctx, force)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"servers": cards, "checked_at": time.Now()})
+}
+
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	if !onlyGET(w, r) {
 		return
 	}
-	if r.URL.Path != "/" {
+	if r.URL.Path != "/search" {
 		http.NotFound(w, r)
 		return
 	}

@@ -2,7 +2,7 @@
 {{template "head" .}}
 {{with .Server}}
 <nav class="breadcrumb" aria-label="Breadcrumb">
-  <a href="/?q={{urlquery $.BackQuery}}">← Search</a>
+  <a href="/servers?q={{urlquery $.BackQuery}}">← Search</a>
   <span class="sep">/</span>
   <span>{{dash .Env}}</span>
   <span class="sep">/</span>

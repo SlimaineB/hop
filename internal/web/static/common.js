@@ -118,6 +118,36 @@
     return "'" + text.replace(/'/g, "'\\''") + "'";
   }
 
+  function applyTheme(theme) {
+    const next = theme === "light" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", next);
+    const button = document.getElementById("theme-toggle");
+    if (button) {
+      const label = next === "dark" ? "Switch to light theme" : "Switch to dark theme";
+      button.setAttribute("aria-label", label);
+      button.setAttribute("title", label);
+    }
+    try { localStorage.setItem("hop-theme", next); } catch (_) {}
+  }
+
+  const themeButton = document.getElementById("theme-toggle");
+  if (themeButton) {
+    applyTheme(document.documentElement.getAttribute("data-theme"));
+    themeButton.addEventListener("click", function () {
+      applyTheme(document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light");
+    });
+  }
+
+  const path = window.location.pathname;
+  document.querySelectorAll("[data-nav]").forEach(function (link) {
+    const href = link.getAttribute("data-nav");
+    const active = href === "/"
+      ? path === "/" || path === "/dashboard"
+      : path === href || (href === "/servers" && path.startsWith("/server")) || (href === "/search" && path.startsWith("/search"));
+    link.classList.toggle("active", active);
+    if (active) link.setAttribute("aria-current", "page");
+  });
+
   window.hop = {
     toast: toast,
     copyText: copyText,

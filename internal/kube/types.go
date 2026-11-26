@@ -229,6 +229,7 @@ type ListOptions struct {
 type Provider interface {
 	Contexts(ctx context.Context) ([]Context, error)
 	ListPods(ctx context.Context, opts ListOptions) (*ListResult, error)
+	ListMetrics(ctx context.Context, opts ListOptions) (*MetricsResult, error)
 	GetPod(ctx context.Context, ref PodRef) (*PodDetail, error)
 	Close() error
 }

@@ -19,6 +19,7 @@ import (
 
 	"github.com/SlimaineB/hop/internal/app"
 	"github.com/SlimaineB/hop/internal/config"
+	"github.com/SlimaineB/hop/internal/dashboard"
 	"github.com/SlimaineB/hop/internal/kube"
 	"github.com/SlimaineB/hop/internal/plugin"
 	"github.com/SlimaineB/hop/internal/search"
@@ -46,14 +47,16 @@ type Options struct {
 	LiveLimit int
 	Registry  *plugin.Registry
 	Stats     func() app.Stats
+	Dashboard *dashboard.Service
 }
 
 type Server struct {
-	backend  Backend
-	options  Options
-	registry *plugin.Registry
-	tmpl     *template.Template
-	mux      *http.ServeMux
+	backend   Backend
+	options   Options
+	registry  *plugin.Registry
+	dashboard *dashboard.Service
+	tmpl      *template.Template
+	mux       *http.ServeMux
 
 	mu      sync.Mutex
 	http    *http.Server
@@ -98,11 +101,12 @@ func New(backend Backend, options Options) (*Server, error) {
 		registry = plugin.NewRegistry()
 	}
 	server := &Server{
-		backend:  backend,
-		options:  options,
-		registry: registry,
-		tmpl:     tmpl,
-		mux:      http.NewServeMux(),
+		backend:   backend,
+		options:   options,
+		registry:  registry,
+		dashboard: options.Dashboard,
+		tmpl:      tmpl,
+		mux:       http.NewServeMux(),
 	}
 	server.routes()
 	return server, nil
@@ -115,11 +119,15 @@ func (s *Server) routes() {
 	}
 	staticHandler := http.FileServer(http.FS(staticFS))
 
-	s.mux.HandleFunc("/", s.handleIndex)
+	s.mux.HandleFunc("/", s.handleDashboard)
+	s.mux.HandleFunc("/dashboard", s.handleDashboard)
+	s.mux.HandleFunc("/search", s.handleIndex)
 	s.mux.HandleFunc("/pod", s.handlePod)
 	s.mux.HandleFunc("/server", s.handleServer)
 	s.mux.HandleFunc("/servers", s.handleServers)
 	s.mux.Handle("/static/", http.StripPrefix("/static/", staticHandler))
+	s.mux.HandleFunc("/api/dashboard", s.handleAPIDashboard)
+	s.mux.HandleFunc("/api/dashboard/servers", s.handleAPIDashboardServers)
 	s.mux.HandleFunc("/api/search", s.handleAPISearch)
 	s.mux.HandleFunc("/api/unified", s.handleAPIUnified)
 	s.mux.HandleFunc("/api/pod", s.handleAPIPod)

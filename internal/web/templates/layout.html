@@ -4,8 +4,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="dark">
+  <meta name="color-scheme" content="dark light">
   <title>{{if .Title}}{{.Title}} · {{end}}hop</title>
+  <script src="/static/theme.js"></script>
   <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
@@ -19,7 +20,13 @@
       </span>
     </a>
     <div class="topbar-right">
-      <a class="nav-link" href="/?q=vm">VMs</a>
+      <a class="nav-link" data-nav="/" href="/">Kubernetes</a>
+      <a class="nav-link" data-nav="/servers" href="/servers">Servers</a>
+      <a class="nav-link" data-nav="/search" href="/search">Search</a>
+      <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Switch to light theme" title="Switch to light theme">
+        <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg>
+        <svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5 8.5 8.5 0 1 0 20.5 14.5Z"></path></svg>
+      </button>
       <span class="version" title="version">v{{version}}</span>
     </div>
   </header>

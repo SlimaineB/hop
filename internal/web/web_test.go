@@ -13,6 +13,7 @@ import (
 	"github.com/SlimaineB/hop/internal/actions"
 	"github.com/SlimaineB/hop/internal/app"
 	"github.com/SlimaineB/hop/internal/config"
+	"github.com/SlimaineB/hop/internal/dashboard"
 	"github.com/SlimaineB/hop/internal/kube"
 	"github.com/SlimaineB/hop/internal/plugin"
 	"github.com/SlimaineB/hop/internal/plugins"
@@ -63,8 +64,19 @@ func TestTemplatesRender(t *testing.T) {
 	if index.Code != http.StatusOK {
 		t.Fatalf("index status = %d, body=%s", index.Code, index.Body.String())
 	}
-	if !strings.Contains(index.Body.String(), "Find anything") {
-		t.Fatalf("index body missing hero")
+	for _, needle := range []string{"Fleet health", "Group by", "dashboard.js", "theme-toggle"} {
+		if !strings.Contains(index.Body.String(), needle) {
+			t.Fatalf("dashboard body missing %q", needle)
+		}
+	}
+
+	searchPage := httptest.NewRecorder()
+	server.Handler().ServeHTTP(searchPage, httptest.NewRequest(http.MethodGet, "/search", nil))
+	if searchPage.Code != http.StatusOK {
+		t.Fatalf("search status = %d, body=%s", searchPage.Code, searchPage.Body.String())
+	}
+	if !strings.Contains(searchPage.Body.String(), "Find anything") {
+		t.Fatalf("search body missing hero")
 	}
 
 	values := url.Values{}
@@ -98,7 +110,7 @@ func TestIndexRendersShortcuts(t *testing.T) {
 		t.Fatalf("new server: %v", err)
 	}
 	response := httptest.NewRecorder()
-	server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/", nil))
+	server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/search", nil))
 	if response.Code != http.StatusOK {
 		t.Fatalf("status = %d", response.Code)
 	}
@@ -110,6 +122,44 @@ func TestIndexRendersShortcuts(t *testing.T) {
 	}
 	if strings.Contains(body, "javascript:alert(1)") {
 		t.Fatalf("unsafe shortcut URL rendered")
+	}
+}
+
+type fakeDashboardPods struct {
+	snapshot *app.Snapshot
+}
+
+func (f *fakeDashboardPods) Snapshot() *app.Snapshot { return f.snapshot }
+
+func (f *fakeDashboardPods) Warm(context.Context, app.WarmRequest) (*app.Snapshot, error) {
+	return f.snapshot, nil
+}
+
+func (f *fakeDashboardPods) Metrics(context.Context, app.MetricsRequest) (*kube.MetricsResult, error) {
+	return &kube.MetricsResult{}, nil
+}
+
+func TestDashboardEndpoint(t *testing.T) {
+	pods := &fakeDashboardPods{snapshot: &app.Snapshot{Pods: []kube.Pod{
+		{Context: "prod", Namespace: "apps", Name: "api-1", Phase: "Running", Ready: true, Env: "prod", Labels: map[string]string{"app": "api"}},
+	}}}
+	server, err := New(&fakeBackend{}, Options{
+		Dashboard: dashboard.New(pods, nil, &config.Config{}),
+	})
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/dashboard", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", response.Code, response.Body.String())
+	}
+	var overview dashboard.Overview
+	if err := json.NewDecoder(response.Body).Decode(&overview); err != nil {
+		t.Fatal(err)
+	}
+	if overview.Totals.Pods != 1 || len(overview.Groups["env"]) != 1 {
+		t.Fatalf("overview = %+v", overview)
 	}
 }
 

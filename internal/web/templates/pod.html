@@ -2,7 +2,7 @@
 {{template "head" .}}
 {{with .Detail}}
 <nav class="breadcrumb" aria-label="Breadcrumb">
-  <a href="/?q={{urlquery $.BackQuery}}">← Search</a>
+  <a href="/search?q={{urlquery $.BackQuery}}">← Search</a>
   <span class="sep">/</span>
   <span>{{.Context.Display}}</span>
   <span class="sep">/</span>

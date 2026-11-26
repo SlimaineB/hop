@@ -2,6 +2,7 @@ package web
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -15,7 +16,7 @@ import (
 	"github.com/SlimaineB/hop/internal/servers"
 )
 
-func TestAPIServersAndRedirect(t *testing.T) {
+func TestAPIServersAndPage(t *testing.T) {
 	dir := t.TempDir()
 	sshPath := filepath.Join(dir, "ssh_config")
 	if err := os.WriteFile(sshPath, []byte("Host sup-uat-vm-01\n  HostName 10.1.2.3\n  User deploy\n"), 0o600); err != nil {
@@ -74,18 +75,21 @@ func TestAPIServersAndRedirect(t *testing.T) {
 		t.Fatalf("vm selector should not search pods: %+v", pulse)
 	}
 
-	client := &http.Client{CheckRedirect: func(req *http.Request, via []*http.Request) error {
-		return http.ErrUseLastResponse
-	}}
-	response, err = client.Get(httpServer.URL + "/servers?q=uat")
+	response, err = http.Get(httpServer.URL + "/servers")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer response.Body.Close()
-	if response.StatusCode != http.StatusTemporaryRedirect {
-		t.Fatalf("redirect status = %d", response.StatusCode)
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("servers page status = %d", response.StatusCode)
 	}
-	if location := response.Header.Get("Location"); !strings.Contains(location, "vm") {
-		t.Fatalf("redirect location = %q", location)
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, needle := range []string{"Servers", "All servers", "servers.js"} {
+		if !strings.Contains(string(body), needle) {
+			t.Fatalf("servers page missing %q", needle)
+		}
 	}
 }
