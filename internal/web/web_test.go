@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -13,18 +14,32 @@ import (
 	"github.com/SlimaineB/hop/internal/app"
 	"github.com/SlimaineB/hop/internal/config"
 	"github.com/SlimaineB/hop/internal/kube"
+	"github.com/SlimaineB/hop/internal/plugin"
+	"github.com/SlimaineB/hop/internal/plugins"
 	"github.com/SlimaineB/hop/internal/search"
 )
 
 type fakeBackend struct {
 	detail *app.Detail
 	rng    *search.TimeRange
+	result *app.SearchResult
 }
 
 func (f *fakeBackend) Contexts(context.Context) ([]kube.Context, error) { return nil, nil }
 
 func (f *fakeBackend) Search(context.Context, app.SearchRequest) (*app.SearchResult, error) {
-	return &app.SearchResult{}, nil
+	return f.searchResult(), nil
+}
+
+func (f *fakeBackend) SearchLocal(app.SearchRequest) (*app.SearchResult, error) {
+	return f.searchResult(), nil
+}
+
+func (f *fakeBackend) searchResult() *app.SearchResult {
+	if f.result != nil {
+		return f.result
+	}
+	return &app.SearchResult{}
 }
 
 func (f *fakeBackend) Detail(_ context.Context, _ kube.PodRef, rng *search.TimeRange) (*app.Detail, error) {
@@ -33,6 +48,8 @@ func (f *fakeBackend) Detail(_ context.Context, _ kube.PodRef, rng *search.TimeR
 }
 
 func (f *fakeBackend) Stats() app.Stats { return app.Stats{} }
+
+func (f *fakeBackend) Snapshot() *app.Snapshot { return nil }
 
 func TestTemplatesRender(t *testing.T) {
 	backend := &fakeBackend{detail: sampleDetail()}
@@ -46,7 +63,7 @@ func TestTemplatesRender(t *testing.T) {
 	if index.Code != http.StatusOK {
 		t.Fatalf("index status = %d, body=%s", index.Code, index.Body.String())
 	}
-	if !strings.Contains(index.Body.String(), "Find the pod") {
+	if !strings.Contains(index.Body.String(), "Find anything") {
 		t.Fatalf("index body missing hero")
 	}
 
@@ -94,6 +111,50 @@ func TestIndexRendersShortcuts(t *testing.T) {
 	if strings.Contains(body, "javascript:alert(1)") {
 		t.Fatalf("unsafe shortcut URL rendered")
 	}
+}
+
+func TestUnifiedEndpointCombinesSections(t *testing.T) {
+	backend := &fakeBackend{result: &app.SearchResult{
+		Hits: []app.HitView{{Pod: kube.Pod{Name: "api-1"}}},
+		Meta: app.Meta{TotalPods: 1},
+	}}
+	shortcuts := []config.ShortcutConfig{
+		{Name: "grafana", URL: "https://grafana.example.com", Keywords: []string{"metrics"}},
+	}
+	registry := plugins.Build(&config.Config{}, plugins.Deps{Pods: backend, Shortcuts: shortcuts})
+	server, err := New(backend, Options{Shortcuts: shortcuts, Registry: registry})
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/unified?q=grafana", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", response.Code, response.Body.String())
+	}
+	var result plugin.Response
+	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
+		t.Fatal(err)
+	}
+	pods := sectionByID(result.Sections, "pods")
+	if pods == nil || len(pods.Items) != 1 || pods.Items[0].Title != "api-1" {
+		t.Fatalf("pods = %+v", pods)
+	}
+	links := sectionByID(result.Sections, "shortcuts")
+	if links == nil || len(links.Items) != 1 || links.Items[0].Title != "grafana" {
+		t.Fatalf("shortcuts = %+v", links)
+	}
+	if result.Total != 2 {
+		t.Fatalf("total = %d", result.Total)
+	}
+}
+
+func sectionByID(sections []plugin.Result, id string) *plugin.Result {
+	for i := range sections {
+		if sections[i].ID == id {
+			return &sections[i]
+		}
+	}
+	return nil
 }
 
 func sampleDetail() *app.Detail {

@@ -26,6 +26,8 @@ const (
 	FieldHost      FieldKind = "host"
 	FieldUser      FieldKind = "user"
 	FieldSSH       FieldKind = "ssh"
+	FieldRepo      FieldKind = "repo"
+	FieldBranch    FieldKind = "branch"
 )
 
 var fieldAliases = map[string]FieldKind{
@@ -59,6 +61,11 @@ var fieldAliases = map[string]FieldKind{
 	"hostname":    FieldHost,
 	"user":        FieldUser,
 	"ssh":         FieldSSH,
+	"repo":        FieldRepo,
+	"repos":       FieldRepo,
+	"repository":  FieldRepo,
+	"branch":      FieldBranch,
+	"branches":    FieldBranch,
 }
 
 type TimeRange struct {

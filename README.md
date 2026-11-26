@@ -2,12 +2,12 @@
 
 # hop
 
-**Find the right pod, VM, or ticket. Open logs, a shell, or the issue. Without leaving the terminal.**
+**Find the right pod, VM, repository, package, or ticket. Open it without leaving the terminal.**
 
-Fuzzy search across all your Kubernetes clusters and SSH inventory, TUI and
-unified local web UI, time ranges, pod topology, node info, Grafana / Loki /
-Mimir links, VM checks, SSH access, browser shortcuts, and Jira-style issue
-providers.
+A modular cockpit over Kubernetes clusters, SSH inventory, local Git
+repositories, container registries, browser shortcuts, and Jira-style tickets.
+Unified TUI and local web UI, live watch, time ranges, pod topology, node info,
+Grafana / Loki / Mimir links, VM checks, SSH access, and opt-in command plugins.
 
 `Go` · `client-go` · `Bubble Tea` · `Cobra`
 
@@ -41,6 +41,12 @@ No daemon, no fzf, no copy-pasting pod names, SSH hosts, or ticket keys.
 | Pod topology | Ingress, Service, EndpointSlice, Pod, owner chain, PVC, Node |
 | Browser shortcuts | `hop link jira` opens configured links by keyword |
 | Issue providers | Open/search/create Jira tickets, extensible to other providers |
+| Cockpit search | One query across pods, VMs, repos, packages, tickets, shortcuts |
+| Git repositories | Discovers repos, branches, commits, dirty state, ahead/behind |
+| Git links | GitHub / GitLab repo, branch, commit, MR and new-MR links |
+| Packages | GHCR, GitLab and Docker registry images with live tags |
+| Live watch | Polls local snapshots while the TUI is open |
+| Plugins | External command sources with a JSON contract, toggleable per source |
 | Cache | In-memory and on-disk snapshots for repeated searches |
 
 ## Preview
@@ -90,6 +96,14 @@ hop contexts
 ## Quick start
 
 ```bash
+# Unified cockpit TUI (live watch on)
+hop all
+
+# Focus one source with a selector
+hop all git hop
+hop all pkg nginx
+hop all vm supervision
+
 # Local web UI
 hop
 
@@ -109,6 +123,17 @@ hop vm supervision uat
 hop pod api ns:apps 12h 14h --plain
 hop search api ns:apps 12h 14h --plain
 hop vm supervision uat --table
+
+# Repositories and packages
+hop git hop
+hop git --links
+hop pkg nginx
+
+# Sources: inspect and toggle without deleting config
+hop config sources
+hop config disable tickets
+hop config enable git
+hop config sources --json
 
 # Browser shortcuts by keyword
 hop link grafana
@@ -247,6 +272,141 @@ box switches to server results. `/servers?q=…` redirects there. Server detail
 pages are served at `/server?name=…`; APIs are `/api/servers` and
 `/api/server` (add `check=1` to run checks).
 
+## Cockpit search
+
+`hop all [terms...]` queries every enabled source in parallel and groups the
+results. In a terminal it opens the cockpit TUI with live watch; otherwise it
+prints grouped results. `--json` and `--plain` are available for scripting.
+
+```bash
+hop all api prod
+hop all git hop
+hop all pkg nginx
+hop all ticket "checkout timeout"
+hop all --json api | jq '.sections[].id'
+hop all --plain "vm supervision"
+```
+
+| Source | ID | Selectors | Notes |
+|---|---|---|---|
+| Pods | `pods` | none | Kubernetes contexts |
+| VMs / SSH | `servers` | `vm`, `vms` | `~/.ssh/config` and `servers` |
+| Git repositories | `repos` | `git`, `repos` | Local discovery, GitHub/GitLab links |
+| Packages | `packages` | `pkg`, `packages`, `registry` | GHCR, GitLab, Docker registry v2 |
+| Tickets | `tickets` | `ticket`, `issue` | Network calls only when requested |
+| Shortcuts | `shortcuts` | `link`, `links` | Configured browser links |
+
+A selector focuses the search on one source. Without a selector, every enabled
+source is queried. Tickets are local/no-op unless the query contains a ticket
+selector or the web UI requests network search explicitly.
+
+### Sources and plugins
+
+Sources are enabled by default. Disable one without deleting its configuration:
+
+```bash
+hop config sources
+hop config disable tickets
+hop config disable pod link
+hop config enable pods
+hop config sources --json
+```
+
+This writes only `sources.disabled` in the YAML config, preserving comments:
+
+```yaml
+sources:
+  disabled: [packages, tickets]
+```
+
+External command plugins are configured under `plugins` and implement the same
+contract as built-ins. `hop` sends the JSON query on stdin and expects
+`{"items": [...], "errors": [...], "meta": ...}` on stdout:
+
+```yaml
+plugins:
+  - id: my-tools
+    title: Team tools
+    kind: tools
+    selectors: [tool, tools]
+    command: /home/me/bin/hop-tools
+    args: [search]
+    timeout: 5s
+    env:
+      TEAM: platform
+```
+
+```bash
+echo '{"raw":"deploy","parsed":{"raw":"deploy","terms":["deploy"]},"limit":20}' \
+  | /home/me/bin/hop-tools search
+```
+
+Plugin items are generic: `id`, `title`, `subtitle`, `description`, `badge`,
+`url`, `copy`, `score`, `percent`, and `meta`. Toggle an external plugin with
+`hop config disable my-tools`.
+
+## Git repositories
+
+`hop git [terms...]` discovers Git repositories under `git.roots` (defaults:
+`~/dev`, `~/src`, `~/code`, `~/projects`) or explicit `git.repos`, with an
+optional `git.exclude` list. It reads the current branch, last commit, author,
+dirty files, ahead/behind state, and origin remote.
+
+```bash
+hop git hop
+hop git --links hop
+hop git --refresh --json
+hop git branch:feature repo:web
+```
+
+GitHub and GitLab remotes get repository, branch, commit, pull/merge-request
+and new-MR links. Override detection for self-hosted hosts:
+
+```yaml
+git:
+  roots: [~/dev, ~/src]
+  repos: []
+  exclude: [vendor, archive]
+  max_depth: 3
+  cache_ttl: 30s
+  providers:
+    git.example.com: gitlab
+```
+
+## Package search
+
+`hop pkg [terms...]` searches container image references. Images referenced by
+pods are discovered automatically; add more under `packages.images`.
+GHCR and GitLab container registries are configured by default.
+
+```bash
+hop pkg nginx
+hop pkg ghcr
+hop pkg --json api
+```
+
+```yaml
+packages:
+  images:
+    - ghcr.io/SlimaineB/hop:main
+    - registry.gitlab.com/group/project:latest
+  cache_ttl: 5m
+  timeout: 8s
+  tag_limit: 50
+  registries:
+    - name: ghcr
+      host: ghcr.io
+      type: ghcr
+    - name: gitlab
+      host: registry.gitlab.com
+      type: gitlab
+      username_env: GITLAB_USER
+      token_env: GITLAB_TOKEN
+```
+
+`username_env` / `token_env` enable bearer-token auth for private registries.
+Tag fetching caches results; `search` never writes credentials to disk.
+
 ## Time ranges
 
 Time tokens restrict Grafana / Loki / Mimir links and log commands. They can
@@ -317,7 +477,8 @@ search pods, inspect VMs, and open Grafana / Swagger / Jira links.
 It also exposes:
 
 - `/healthz` for health checks;
-- `/api/search` for results;
+- `/api/unified` for grouped cockpit sections and live polling;
+- `/api/search` for pod results;
 - `/api/pod` for the full pod page;
 - `/api/contexts` and `/api/stats`.
 
@@ -330,6 +491,9 @@ card. Click any topology node for facts and a copyable `kubectl` command.
 
 | Command | Purpose |
 |---|---|
+| `hop all [terms...]` | Unified cockpit TUI, aliases `cockpit`, `everything` |
+| `hop git [terms...]` | Search local Git repos, aliases `repos`, `repo` |
+| `hop pkg [terms...]` | Search container images, aliases `packages`, `registry` |
 | `hop pod [terms...]` | Search pods, alias `pods`; TUI in a terminal |
 | `hop vm [tags...]` | Search VMs, TUI in a terminal; aliases `servers`, `vms` |
 | `hop link [keywords...]` | Open a configured browser shortcut, alias `links` |
@@ -354,6 +518,9 @@ card. Click any topology node for facts and a copyable `kubectl` command.
 | `hop config path` | Print the effective config path |
 | `hop config show` | Print the resolved config |
 | `hop config check` | Validate config and kubeconfigs |
+| `hop config sources` | List sources and enabled state, aliases `plugins`, `options` |
+| `hop config enable SOURCE...` | Enable one or more sources/plugins |
+| `hop config disable SOURCE...` | Disable one or more sources/plugins |
 | `hop cache dir` | Print the cache directory |
 | `hop cache clear` | Delete cached snapshots |
 | `hop version` | Print the version |
@@ -374,7 +541,10 @@ Main flags:
 | `--port` | Web server port, `0` = random |
 | `--no-open` | Do not open the browser |
 | `--json` | Full JSON output for `search` |
-| `--plain` | One line per pod for `search` |
+| `--plain` | One line per pod for `search`, or per result for `all` |
+| `--live` | Live watch in `hop all` (default true) |
+| `--tickets` | Force network ticket searches in `hop all` |
+| `--links` | Print repo/branch/commit/MR links for `git` |
 
 ## Configuration
 
@@ -449,6 +619,23 @@ search:
   min_score: 0.35
   limit: 50
   live_limit: 200
+
+sources:
+  disabled: []   # e.g. [tickets, packages]
+
+git:
+  roots: [~/dev, ~/src]
+  max_depth: 3
+  cache_ttl: 30s
+
+packages:
+  cache_ttl: 5m
+  tag_limit: 50
+  registries:
+    - {name: ghcr, host: ghcr.io, type: ghcr}
+    - {name: gitlab, host: registry.gitlab.com, type: gitlab}
+
+plugins: []     # external command sources
 ```
 
 `resolve_owners` makes extra calls to resolve ReplicaSet → Deployment. Leave it

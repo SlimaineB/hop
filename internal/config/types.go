@@ -40,6 +40,52 @@ type Config struct {
 	Shortcuts  []ShortcutConfig          `yaml:"shortcuts,omitempty"`
 	Issues     IssuesConfig              `yaml:"issues,omitempty"`
 	Providers  map[string]ProviderConfig `yaml:"providers,omitempty"`
+	Git        Git                       `yaml:"git,omitempty"`
+	Packages   Packages                  `yaml:"packages,omitempty"`
+	Plugins    []PluginConfig            `yaml:"plugins,omitempty"`
+	Sources    Sources                   `yaml:"sources,omitempty"`
+}
+
+type Sources struct {
+	Disabled []string `yaml:"disabled,omitempty"`
+}
+
+type Packages struct {
+	Registries []RegistryConfig `yaml:"registries,omitempty"`
+	Images     []string         `yaml:"images,omitempty"`
+	CacheTTL   Duration         `yaml:"cache_ttl,omitempty"`
+	Timeout    Duration         `yaml:"timeout,omitempty"`
+	TagLimit   int              `yaml:"tag_limit,omitempty"`
+}
+
+type RegistryConfig struct {
+	Name        string   `yaml:"name"`
+	Host        string   `yaml:"host"`
+	Type        string   `yaml:"type,omitempty"`
+	Username    string   `yaml:"username,omitempty"`
+	UsernameEnv string   `yaml:"username_env,omitempty"`
+	TokenEnv    string   `yaml:"token_env,omitempty"`
+	Images      []string `yaml:"images,omitempty"`
+}
+
+type PluginConfig struct {
+	ID        string            `yaml:"id"`
+	Title     string            `yaml:"title,omitempty"`
+	Kind      string            `yaml:"kind,omitempty"`
+	Selectors []string          `yaml:"selectors,omitempty"`
+	Command   string            `yaml:"command"`
+	Args      []string          `yaml:"args,omitempty"`
+	Env       map[string]string `yaml:"env,omitempty"`
+	Timeout   Duration          `yaml:"timeout,omitempty"`
+}
+
+type Git struct {
+	Roots     []string          `yaml:"roots,omitempty"`
+	Repos     []string          `yaml:"repos,omitempty"`
+	Exclude   []string          `yaml:"exclude,omitempty"`
+	Providers map[string]string `yaml:"providers,omitempty"`
+	MaxDepth  int               `yaml:"max_depth,omitempty"`
+	CacheTTL  Duration          `yaml:"cache_ttl,omitempty"`
 }
 
 type IssuesConfig struct {

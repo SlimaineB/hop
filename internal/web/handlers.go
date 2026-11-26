@@ -10,6 +10,7 @@ import (
 	"github.com/SlimaineB/hop/internal/app"
 	"github.com/SlimaineB/hop/internal/config"
 	"github.com/SlimaineB/hop/internal/kube"
+	"github.com/SlimaineB/hop/internal/plugin"
 	"github.com/SlimaineB/hop/internal/search"
 )
 
@@ -151,6 +152,40 @@ func (s *Server) handleAPISearch(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, result)
 }
 
+func (s *Server) handleAPIUnified(w http.ResponseWriter, r *http.Request) {
+	if !onlyGET(w, r) {
+		return
+	}
+	values := r.URL.Query()
+	limit := 100
+	if raw := values.Get("limit"); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 && parsed <= 2000 {
+			limit = parsed
+		}
+	}
+	refresh, _ := strconv.ParseBool(values.Get("refresh"))
+	live, _ := strconv.ParseBool(values.Get("live"))
+	if !live {
+		live, _ = strconv.ParseBool(values.Get("local"))
+	}
+	tickets, _ := strconv.ParseBool(values.Get("tickets"))
+	raw := strings.TrimSpace(values.Get("q"))
+	ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
+	defer cancel()
+	result := s.registry.Search(ctx, plugin.Query{
+		Raw:            raw,
+		Parsed:         search.Parse(raw),
+		Contexts:       parseMulti(values["context"]),
+		Namespaces:     parseMulti(values["namespace"]),
+		Env:            strings.TrimSpace(values.Get("env")),
+		Limit:          limit,
+		ForceRefresh:   refresh,
+		Local:          live,
+		IncludeNetwork: tickets && !live,
+	})
+	writeJSON(w, http.StatusOK, result)
+}
+
 func (s *Server) handleAPIPod(w http.ResponseWriter, r *http.Request) {
 	if !onlyGET(w, r) {
 		return
@@ -200,6 +235,10 @@ func (s *Server) handleAPIContexts(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleAPIStats(w http.ResponseWriter, r *http.Request) {
 	if !onlyGET(w, r) {
+		return
+	}
+	if s.options.Stats != nil {
+		writeJSON(w, http.StatusOK, s.options.Stats())
 		return
 	}
 	if s.backend == nil {

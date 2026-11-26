@@ -83,6 +83,9 @@ func (a *App) newConfigCommand() *cobra.Command {
 	}
 	cmd.AddCommand(
 		a.newConfigShortcutCommand(),
+		a.newConfigSourcesCommand(),
+		a.newConfigToggleCommand(true),
+		a.newConfigToggleCommand(false),
 		&cobra.Command{
 			Use:   "init",
 			Short: "Create an example configuration",
@@ -162,7 +165,7 @@ func (a *App) newConfigCommand() *cobra.Command {
 						warnings++
 						continue
 					}
-					if !validShortcutURL(shortcut.URL) {
+					if !config.ValidShortcutURL(shortcut.URL) {
 						fmt.Fprintf(cmd.ErrOrStderr(), "warning: shortcut %s has an invalid URL: %s\n", shortcut.Name, shortcut.URL)
 						warnings++
 					}
@@ -326,7 +329,7 @@ func (a *App) newConfigShortcutCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := strings.TrimSpace(args[0])
 			rawURL := strings.TrimSpace(args[1])
-			if !validShortcutURL(rawURL) {
+			if !config.ValidShortcutURL(rawURL) {
 				return fmt.Errorf("invalid http(s) URL: %s", rawURL)
 			}
 			keywords := append(append([]string{}, extraKeywords...), args[2:]...)
@@ -354,7 +357,7 @@ func (a *App) newConfigShortcutCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			hits := matchShortcuts(cfg.Shortcuts, nil)
+			hits := config.MatchShortcuts(cfg.Shortcuts, nil)
 			return printShortcuts(cmd, hits, false)
 		},
 	}

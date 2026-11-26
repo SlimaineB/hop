@@ -48,6 +48,11 @@ func Default() *Config {
 			Limit:     50,
 			LiveLimit: 200,
 		},
+		Git: Git{
+			Roots:    []string{"~/dev", "~/src", "~/code", "~/projects"},
+			MaxDepth: 3,
+			CacheTTL: Duration(30 * time.Second),
+		},
 	}
 }
 
@@ -183,6 +188,95 @@ func (c *Config) Normalize() {
 		server.HealthURL = strings.TrimSpace(server.HealthURL)
 		server.Tags = cleanList(server.Tags)
 	}
+	for i := range c.Git.Roots {
+		c.Git.Roots[i] = ExpandPath(c.Git.Roots[i])
+	}
+	for i := range c.Git.Repos {
+		c.Git.Repos[i] = ExpandPath(c.Git.Repos[i])
+	}
+	c.Git.Roots = cleanList(c.Git.Roots)
+	c.Git.Repos = cleanList(c.Git.Repos)
+	c.Git.Exclude = cleanList(c.Git.Exclude)
+	if c.Git.MaxDepth <= 0 {
+		c.Git.MaxDepth = 3
+	}
+	if c.Git.MaxDepth > 12 {
+		c.Git.MaxDepth = 12
+	}
+	if c.Git.CacheTTL.Get() <= 0 {
+		c.Git.CacheTTL = Duration(30 * time.Second)
+	}
+	if c.Git.Providers != nil {
+		providers := make(map[string]string, len(c.Git.Providers))
+		for host, provider := range c.Git.Providers {
+			host = strings.ToLower(strings.TrimSpace(host))
+			provider = strings.ToLower(strings.TrimSpace(provider))
+			if host == "" || provider == "" {
+				continue
+			}
+			providers[host] = provider
+		}
+		c.Git.Providers = providers
+	}
+	if c.Packages.CacheTTL.Get() <= 0 {
+		c.Packages.CacheTTL = Duration(5 * time.Minute)
+	}
+	if c.Packages.Timeout.Get() <= 0 {
+		c.Packages.Timeout = Duration(8 * time.Second)
+	}
+	if c.Packages.TagLimit <= 0 {
+		c.Packages.TagLimit = 50
+	}
+	c.Sources.Disabled = normalizeDisabled(c.Sources.Disabled)
+	c.Packages.Images = cleanList(c.Packages.Images)
+	for i := range c.Packages.Registries {
+		registry := &c.Packages.Registries[i]
+		registry.Name = strings.TrimSpace(registry.Name)
+		registry.Host = strings.ToLower(strings.TrimSpace(registry.Host))
+		registry.Host = strings.TrimPrefix(registry.Host, "https://")
+		registry.Host = strings.TrimPrefix(registry.Host, "http://")
+		registry.Host = strings.TrimSuffix(registry.Host, "/")
+		registry.Type = strings.ToLower(strings.TrimSpace(registry.Type))
+		registry.Username = strings.TrimSpace(registry.Username)
+		registry.UsernameEnv = strings.TrimSpace(registry.UsernameEnv)
+		registry.TokenEnv = strings.TrimSpace(registry.TokenEnv)
+		registry.Images = cleanList(registry.Images)
+		if registry.Type == "" {
+			lower := registry.Host
+			switch {
+			case strings.Contains(lower, "ghcr"):
+				registry.Type = "ghcr"
+			case strings.Contains(lower, "gitlab"):
+				registry.Type = "gitlab"
+			case strings.Contains(lower, "docker"):
+				registry.Type = "docker"
+			default:
+				registry.Type = "registry"
+			}
+		}
+	}
+	plugins := make([]PluginConfig, 0, len(c.Plugins))
+	for _, plugin := range c.Plugins {
+		plugin.ID = strings.TrimSpace(plugin.ID)
+		plugin.Title = strings.TrimSpace(plugin.Title)
+		plugin.Kind = strings.ToLower(strings.TrimSpace(plugin.Kind))
+		plugin.Command = strings.TrimSpace(plugin.Command)
+		plugin.Selectors = cleanList(plugin.Selectors)
+		if plugin.ID == "" || plugin.Command == "" {
+			continue
+		}
+		if plugin.Kind == "" {
+			plugin.Kind = "generic"
+		}
+		if plugin.Title == "" {
+			plugin.Title = plugin.ID
+		}
+		if plugin.Timeout.Get() <= 0 {
+			plugin.Timeout = Duration(5 * time.Second)
+		}
+		plugins = append(plugins, plugin)
+	}
+	c.Plugins = plugins
 }
 
 func ExpandPath(p string) string {

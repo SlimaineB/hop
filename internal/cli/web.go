@@ -17,14 +17,22 @@ import (
 	"github.com/SlimaineB/hop/internal/app"
 	"github.com/SlimaineB/hop/internal/config"
 	"github.com/SlimaineB/hop/internal/kube"
+	"github.com/SlimaineB/hop/internal/plugin"
+	"github.com/SlimaineB/hop/internal/plugins"
+	"github.com/SlimaineB/hop/internal/providers"
+	containerregistry "github.com/SlimaineB/hop/internal/registry"
+	"github.com/SlimaineB/hop/internal/repos"
 	"github.com/SlimaineB/hop/internal/servers"
 	"github.com/SlimaineB/hop/internal/web"
 )
 
 type webLauncher struct {
-	svc     *app.Service
-	cfg     *config.Config
-	servers *servers.Service
+	svc       *app.Service
+	cfg       *config.Config
+	servers   *servers.Service
+	providers *providers.Set
+	plugins   *plugin.Registry
+	stats     func() app.Stats
 
 	mu     sync.Mutex
 	server *web.Server
@@ -33,8 +41,37 @@ type webLauncher struct {
 
 func newWebLauncher(service *app.Service, cfg *config.Config) *webLauncher {
 	launcher := &webLauncher{svc: service, cfg: cfg}
-	if cfg != nil {
-		launcher.servers = servers.New(cfg)
+	if cfg == nil {
+		return launcher
+	}
+	launcher.servers = servers.New(cfg)
+	if set, err := loadProviderSet(cfg); err == nil {
+		launcher.providers = set
+	}
+	shortcuts := cfg.Shortcuts
+	if cfg.SourceDisabled("shortcuts") {
+		shortcuts = nil
+	}
+	reposService := repos.New(cfg)
+	registryService := containerregistry.New(cfg)
+	var pods plugins.PodSearcher
+	if service != nil {
+		pods = service
+	}
+	launcher.plugins = plugins.Build(cfg, plugins.Deps{
+		Pods:             pods,
+		Servers:          launcher.servers,
+		Repos:            reposService,
+		Registry:         registryService,
+		Providers:        launcher.providers,
+		Shortcuts:        shortcuts,
+		OnImagesDetected: func(refs []string) { registryService.SetImages(refs...) },
+	})
+	launcher.stats = func() app.Stats {
+		if service == nil {
+			return app.Stats{}
+		}
+		return service.Stats()
 	}
 	return launcher
 }
@@ -45,12 +82,19 @@ func (l *webLauncher) ensure() (string, error) {
 	if l.server != nil && l.base != "" {
 		return l.base, nil
 	}
-	server, err := web.New(l.svc, web.Options{
+	var backend web.Backend
+	if l.svc != nil {
+		backend = l.svc
+	}
+	server, err := web.New(backend, web.Options{
 		Bind:      l.cfg.UI.Bind,
 		Port:      l.cfg.UI.Port,
 		Theme:     l.cfg.UI.Theme,
 		Servers:   l.servers,
-		Shortcuts: l.cfg.Shortcuts,
+		Shortcuts: shortcutsOrNil(l.cfg),
+		LiveLimit: l.cfg.Search.LiveLimit,
+		Registry:  l.plugins,
+		Stats:     l.stats,
 	})
 	if err != nil {
 		return "", err
@@ -76,6 +120,18 @@ func (l *webLauncher) OpenPod(ref kube.PodRef, query string) (string, error) {
 		values.Set("q", query)
 	}
 	target := base + "/pod?" + values.Encode()
+	return target, actions.OpenBrowser(target)
+}
+
+func (l *webLauncher) OpenQuery(query string) (string, error) {
+	base, err := l.ensure()
+	if err != nil {
+		return "", err
+	}
+	target := base
+	if query != "" {
+		target += "/?q=" + url.QueryEscape(query)
+	}
 	return target, actions.OpenBrowser(target)
 }
 
@@ -154,4 +210,11 @@ func (a *App) newWebCommand() *cobra.Command {
 	}
 	addWebFlags(cmd, a)
 	return cmd
+}
+
+func shortcutsOrNil(cfg *config.Config) []config.ShortcutConfig {
+	if cfg == nil || cfg.SourceDisabled("shortcuts") {
+		return nil
+	}
+	return cfg.Shortcuts
 }

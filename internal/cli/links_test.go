@@ -12,19 +12,19 @@ func TestMatchShortcuts(t *testing.T) {
 		{Name: "jira", URL: "https://jira.example.com", Keywords: []string{"ticket", "bug"}},
 		{Name: "swagger", URL: "https://api.example.com/swagger", Keywords: []string{"api", "openapi"}},
 	}
-	hits := matchShortcuts(shortcuts, []string{"jira"})
+	hits := config.MatchShortcuts(shortcuts, []string{"jira"})
 	if len(hits) != 1 || hits[0].Shortcut.Name != "jira" {
 		t.Fatalf("hits = %+v", hits)
 	}
-	hits = matchShortcuts(shortcuts, []string{"grafana", "metrics"})
+	hits = config.MatchShortcuts(shortcuts, []string{"grafana", "metrics"})
 	if len(hits) != 1 || hits[0].Shortcut.Name != "grafana" || hits[0].Score <= 100 {
 		t.Fatalf("multi-term hits = %+v", hits)
 	}
-	hits = matchShortcuts(shortcuts, []string{"ticket"})
+	hits = config.MatchShortcuts(shortcuts, []string{"ticket"})
 	if len(hits) != 1 || hits[0].Shortcut.Name != "jira" {
 		t.Fatalf("keyword hits = %+v", hits)
 	}
-	hits = matchShortcuts(shortcuts, []string{"missing"})
+	hits = config.MatchShortcuts(shortcuts, []string{"missing"})
 	if len(hits) != 0 {
 		t.Fatalf("unexpected hits = %+v", hits)
 	}
@@ -32,12 +32,12 @@ func TestMatchShortcuts(t *testing.T) {
 
 func TestValidShortcutURL(t *testing.T) {
 	for _, value := range []string{"https://example.com", "http://localhost:3000/path"} {
-		if !validShortcutURL(value) {
+		if !config.ValidShortcutURL(value) {
 			t.Fatalf("expected valid: %s", value)
 		}
 	}
 	for _, value := range []string{"", "example.com", "ftp://example.com", "javascript:alert(1)"} {
-		if validShortcutURL(value) {
+		if config.ValidShortcutURL(value) {
 			t.Fatalf("expected invalid: %s", value)
 		}
 	}

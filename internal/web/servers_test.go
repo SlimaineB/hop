@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/SlimaineB/hop/internal/config"
+	"github.com/SlimaineB/hop/internal/plugin"
+	"github.com/SlimaineB/hop/internal/plugins"
 	"github.com/SlimaineB/hop/internal/servers"
 )
 
@@ -23,7 +25,9 @@ func TestAPIServersAndRedirect(t *testing.T) {
 	cfg.SSHConfig = sshPath
 	cfg.Servers = []config.ServerConfig{{Name: "app01", Host: "10.0.0.5", Tags: []string{"app", "prod"}}}
 	cfg.Normalize()
-	server, err := New(nil, Options{Servers: servers.New(cfg)})
+	serverSvc := servers.New(cfg)
+	registry := plugins.Build(&config.Config{}, plugins.Deps{Servers: serverSvc})
+	server, err := New(nil, Options{Servers: serverSvc, Registry: registry})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,6 +50,28 @@ func TestAPIServersAndRedirect(t *testing.T) {
 	}
 	if len(payload.Servers) != 1 || payload.Servers[0].Server.Name != "sup-uat-vm-01" {
 		t.Fatalf("servers = %+v", payload.Servers)
+	}
+
+	response, err = http.Get(httpServer.URL + "/api/unified?q=uat%20vm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	var combined plugin.Response
+	if err := json.NewDecoder(response.Body).Decode(&combined); err != nil {
+		t.Fatal(err)
+	}
+	var serverSection *plugin.Result
+	for i := range combined.Sections {
+		if combined.Sections[i].ID == "servers" {
+			serverSection = &combined.Sections[i]
+		}
+	}
+	if serverSection == nil || len(serverSection.Items) != 1 || serverSection.Items[0].Title != "sup-uat-vm-01" {
+		t.Fatalf("unified servers = %+v", combined.Sections)
+	}
+	if pulse := sectionByID(combined.Sections, "pods"); pulse != nil {
+		t.Fatalf("vm selector should not search pods: %+v", pulse)
 	}
 
 	client := &http.Client{CheckRedirect: func(req *http.Request, via []*http.Request) error {

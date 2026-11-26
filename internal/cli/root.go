@@ -88,13 +88,16 @@ func NewRootCommand() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "hop [terms...]",
 		Short: "Find a pod or VM, then open logs, metrics or SSH",
-		Long: `hop searches pods across all your Kubernetes contexts and VMs in your inventory.
+		Long: `hop searches pods, VMs, Git repositories, packages and tickets in one cockpit.
 
 With no arguments, it opens the unified local web UI.
-With arguments, it opens the pod search TUI. Term order does not matter.
+With arguments, it opens the pod search TUI unless a selector switches modes.
 Prefer the explicit categories when possible:
+  hop all <terms...>   unified cockpit across every enabled source
   hop pod <terms...>   search Kubernetes pods
   hop vm <terms...>    search VMs and SSH servers
+  hop git <terms...>   search local Git repositories
+  hop pkg <terms...>   search container images and registries
   hop link <keyword>   open a configured browser shortcut
   hop issue <key...>   open, search or create tickets
 
@@ -103,6 +106,7 @@ works without a --provider flag.
 
 Examples:
   hop
+  hop all git hop
   hop pod api prod -2h
   hop vm supervision uat
   hop link grafana
@@ -157,6 +161,9 @@ Examples:
 	root.Flags().IntVar(&a.flags.concurrency, "concurrency", 0, "number of clusters queried in parallel")
 
 	root.AddCommand(
+		a.newAllCommand(),
+		a.newGitCommand(),
+		a.newPkgCommand(),
 		a.newPodCommand(),
 		a.newSearchCommand(),
 		a.newWebCommand(),

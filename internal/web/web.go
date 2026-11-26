@@ -20,6 +20,7 @@ import (
 	"github.com/SlimaineB/hop/internal/app"
 	"github.com/SlimaineB/hop/internal/config"
 	"github.com/SlimaineB/hop/internal/kube"
+	"github.com/SlimaineB/hop/internal/plugin"
 	"github.com/SlimaineB/hop/internal/search"
 	"github.com/SlimaineB/hop/internal/servers"
 	"github.com/SlimaineB/hop/internal/version"
@@ -31,6 +32,7 @@ var content embed.FS
 type Backend interface {
 	Contexts(ctx context.Context) ([]kube.Context, error)
 	Search(ctx context.Context, req app.SearchRequest) (*app.SearchResult, error)
+	SearchLocal(req app.SearchRequest) (*app.SearchResult, error)
 	Detail(ctx context.Context, ref kube.PodRef, rng *search.TimeRange) (*app.Detail, error)
 	Stats() app.Stats
 }
@@ -41,13 +43,17 @@ type Options struct {
 	Theme     string
 	Servers   *servers.Service
 	Shortcuts []config.ShortcutConfig
+	LiveLimit int
+	Registry  *plugin.Registry
+	Stats     func() app.Stats
 }
 
 type Server struct {
-	backend Backend
-	options Options
-	tmpl    *template.Template
-	mux     *http.ServeMux
+	backend  Backend
+	options  Options
+	registry *plugin.Registry
+	tmpl     *template.Template
+	mux      *http.ServeMux
 
 	mu      sync.Mutex
 	http    *http.Server
@@ -87,7 +93,17 @@ func New(backend Backend, options Options) (*Server, error) {
 		return nil, fmt.Errorf("parse templates: %w", err)
 	}
 
-	server := &Server{backend: backend, options: options, tmpl: tmpl, mux: http.NewServeMux()}
+	registry := options.Registry
+	if registry == nil {
+		registry = plugin.NewRegistry()
+	}
+	server := &Server{
+		backend:  backend,
+		options:  options,
+		registry: registry,
+		tmpl:     tmpl,
+		mux:      http.NewServeMux(),
+	}
 	server.routes()
 	return server, nil
 }
@@ -105,6 +121,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/servers", s.handleServers)
 	s.mux.Handle("/static/", http.StripPrefix("/static/", staticHandler))
 	s.mux.HandleFunc("/api/search", s.handleAPISearch)
+	s.mux.HandleFunc("/api/unified", s.handleAPIUnified)
 	s.mux.HandleFunc("/api/pod", s.handleAPIPod)
 	s.mux.HandleFunc("/api/servers", s.handleAPIServers)
 	s.mux.HandleFunc("/api/server", s.handleAPIServer)
