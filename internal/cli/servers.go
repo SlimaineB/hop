@@ -179,7 +179,7 @@ func (a *App) newSSHCommand() *cobra.Command {
 }
 
 func (a *App) runServerTUI(service *servers.Service, cfg *config.Config, query string) error {
-	return runServerTUI(service, newWebLauncher(nil, cfg), query)
+	return runServerTUI(service, newWebLauncher(nil, cfg, a.resolvedConfigPath()), query)
 }
 
 func runServerTUI(service *servers.Service, launcher *webLauncher, query string) error {

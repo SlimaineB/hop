@@ -73,6 +73,13 @@ func TestOverviewGroupsAndIssues(t *testing.T) {
 	if prod == nil || prod.Pods != 2 || prod.Ready != 1 || prod.CPU != 300 {
 		t.Fatalf("prod bucket = %+v", prod)
 	}
+	if prod.Envs["prod"] != 2 {
+		t.Fatalf("prod envs = %+v", prod.Envs)
+	}
+	appBucket := findBucket(overview.Groups["app"], "api")
+	if appBucket == nil || appBucket.Envs["prod"] != 2 {
+		t.Fatalf("api envs = %+v", appBucket)
+	}
 	if len(overview.Issues) != 2 {
 		t.Fatalf("issues = %+v", overview.Issues)
 	}

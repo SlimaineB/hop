@@ -4674,3 +4674,55 @@ body.palette-open {
     display: none;
   }
 }
+
+.context-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.context-switch:hover,
+.context-switch:focus-within {
+  border-color: var(--accent);
+}
+
+.context-switch-label {
+  color: var(--muted-2);
+}
+
+.context-switch select {
+  max-width: 130px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  letter-spacing: 0;
+  text-transform: none;
+  cursor: pointer;
+}
+
+.context-switch select option {
+  background: var(--panel-solid);
+  color: var(--text);
+}
+
+@media (max-width: 640px) {
+  .context-switch-label {
+    display: none;
+  }
+  .context-switch select {
+    max-width: 92px;
+  }
+}

@@ -1,0 +1,194 @@
+{{define "cockpit.html"}}
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>Cockpit · hop</title>
+  <script src="/static/theme.js"></script>
+  <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/cockpit.css">
+</head>
+<body class="cockpit-body">
+  <svg class="cx-sprite" aria-hidden="true">
+    <symbol id="ic-orbit" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M20.5 8.5c-1.8-2.9-4.8-4.7-8.5-4.7S5.3 5.6 3.5 8.5M20.5 15.5c-1.8 2.9-4.8 4.7-8.5 4.7s-6.7-1.8-8.5-4.7"></path><path d="M20.5 8.5c1.6 2.8 1.1 6.4-1.5 8.6M3.5 15.5c-1.6-2.8-1.1-6.4 1.5-8.6"></path></symbol>
+    <symbol id="ic-home" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="2"></rect><rect x="14" y="3" width="7" height="7" rx="2"></rect><rect x="3" y="14" width="7" height="7" rx="2"></rect><rect x="14" y="14" width="7" height="7" rx="2"></rect></symbol>
+    <symbol id="ic-kube" viewBox="0 0 24 24"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z"></path><path d="M12 12v9M4 7.5l8 4.5 8-4.5"></path></symbol>
+    <symbol id="ic-git" viewBox="0 0 24 24"><circle cx="6" cy="5" r="2"></circle><circle cx="18" cy="6" r="2"></circle><circle cx="6" cy="19" r="2"></circle><path d="M6 7v10M8 7.5c3 0 3.5 1 6 1.5s4 1.5 4 2.5"></path></symbol>
+    <symbol id="ic-package" viewBox="0 0 24 24"><path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5v-9Z"></path><path d="M4 7.5 12 12l8-4.5M12 12v9"></path></symbol>
+    <symbol id="ic-ticket" viewBox="0 0 24 24"><path d="M4 5h16v5a2 2 0 0 0 0 4v5H4v-5a2 2 0 0 0 0-4V5Z"></path><path d="M12 7v10"></path></symbol>
+    <symbol id="ic-server" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="2"></rect><rect x="3" y="13" width="18" height="7" rx="2"></rect><path d="M7 7.5h.01M7 16.5h.01"></path></symbol>
+    <symbol id="ic-container" viewBox="0 0 24 24"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z"></path><path d="M8 10.5 12 13l4-2.5M12 13v5"></path></symbol>
+    <symbol id="ic-radar" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="3"></circle><path d="M12 4v3M20 12h-3M12 20v-3M4 12h3"></path></symbol>
+    <symbol id="ic-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2"></path></symbol>
+    <symbol id="ic-refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.6-6.4"></path><path d="M21 3v6h-6"></path></symbol>
+    <symbol id="ic-zoom-in" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m16 16 4.5 4.5M10.5 7.5v6M7.5 10.5h6"></path></symbol>
+    <symbol id="ic-zoom-out" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m16 16 4.5 4.5M7.5 10.5h6"></path></symbol>
+    <symbol id="ic-fit" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"></path></symbol>
+    <symbol id="ic-scan" viewBox="0 0 24 24"><path d="M13 2 4.5 13H11l-1 9 8.5-11H12l1-9Z"></path></symbol>
+    <symbol id="ic-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></symbol>
+    <symbol id="ic-moon" viewBox="0 0 24 24"><path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5 8.5 8.5 0 1 0 20.5 14.5Z"></path></symbol>
+    <symbol id="ic-tag" viewBox="0 0 24 24"><path d="M20 13 13 20l-9-9V4h7l9 9Z"></path><circle cx="8" cy="8" r="1.4"></circle></symbol>
+    <symbol id="ic-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.8.4-1 1-1 2.2M12 17h.01"></path></symbol>
+    <symbol id="ic-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"></path></symbol>
+    <symbol id="ic-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"></path></symbol>
+    <symbol id="ic-external" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9"></path><path d="M18 14v5H5V6h5"></path></symbol>
+    <symbol id="ic-config" viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"></path><circle cx="15" cy="7" r="2"></circle><circle cx="7" cy="17" r="2"></circle></symbol>
+  </svg>
+
+  <div class="cx-aurora cx-aurora-dev" aria-hidden="true"></div>
+  <div class="cx-aurora cx-aurora-ops" aria-hidden="true"></div>
+  <div class="cx-grid" aria-hidden="true"></div>
+  <div class="cx-vignette" aria-hidden="true"></div>
+
+  <div class="cockpit" id="cockpit">
+    <header class="cx-topbar">
+      <a class="cx-brand" href="/" aria-label="hop overview">
+        <span class="cx-brand-orb" aria-hidden="true"><i></i></span>
+        <span class="cx-brand-copy"><b>hop</b><em>cockpit</em></span>
+      </a>
+      <div class="cx-crumb" aria-live="polite"><span>cockpit</span><i>/</i><b id="view-title">orbit</b></div>
+      <form class="cx-global" id="global-form" role="search">
+        <svg class="dock-ic" aria-hidden="true"><use href="#ic-search"></use></svg>
+        <input id="global-input" type="text" placeholder="Search everything…" autocomplete="off" spellcheck="false" aria-label="Universal search">
+        <kbd>/</kbd>
+      </form>
+      <div class="cx-top-actions">
+        {{template "context-switch" contextMenu}}
+        <button class="cx-live-pill" id="live-btn" type="button" aria-label="Toggle live refresh" aria-pressed="true"><i></i><span id="cx-status">connecting</span></button>
+        <a class="cx-icon-btn" id="open-external" href="/" target="_blank" rel="noopener" aria-label="Open current view in a new tab"><svg class="dock-ic"><use href="#ic-external"></use></svg></a>
+        <button class="cx-icon-btn" id="theme-btn" type="button" aria-label="Toggle theme"><svg class="dock-ic ic-sun"><use href="#ic-sun"></use></svg><svg class="dock-ic ic-moon"><use href="#ic-moon"></use></svg></button>
+        <button class="cx-icon-btn" id="help-btn" type="button" aria-label="Keyboard shortcuts"><svg class="dock-ic"><use href="#ic-help"></use></svg></button>
+      </div>
+    </header>
+
+    <nav class="cx-rail cx-rail-left" data-dock data-axis="y" aria-label="Build and develop">
+      <span class="cx-rail-label"><i></i>build</span>
+      <div class="cx-rail-well">
+        <button class="cx-rail-item is-active" type="button" data-view="orbit" data-label="Orbit" aria-label="Orbit"><svg class="dock-ic"><use href="#ic-orbit"></use></svg><span>Orbit</span></button>
+        <a class="cx-rail-item" href="/dashboard?embed=1" data-view="overview" data-label="Overview" data-href="/dashboard?embed=1" aria-label="Overview"><svg class="dock-ic"><use href="#ic-home"></use></svg><span>Overview</span></a>
+        <a class="cx-rail-item" href="/kubernetes?embed=1" data-view="kubernetes" data-label="Kubernetes" data-href="/kubernetes?embed=1" aria-label="Kubernetes"><svg class="dock-ic"><use href="#ic-kube"></use></svg><span>Kubernetes</span></a>
+        <a class="cx-rail-item" href="/git?embed=1" data-view="repos" data-label="Repositories" data-href="/git?embed=1" aria-label="Repositories"><svg class="dock-ic"><use href="#ic-git"></use></svg><span>Repositories</span></a>
+        <a class="cx-rail-item" href="/packages?embed=1" data-view="packages" data-label="Packages" data-href="/packages?embed=1" aria-label="Packages"><svg class="dock-ic"><use href="#ic-package"></use></svg><span>Packages</span></a>
+        <a class="cx-rail-item" href="/tickets?embed=1" data-view="tickets" data-label="Tickets" data-href="/tickets?embed=1" aria-label="Tickets"><svg class="dock-ic"><use href="#ic-ticket"></use></svg><span>Tickets</span></a>
+      </div>
+      <span class="cx-rail-meta" id="dev-meta">— dev</span>
+    </nav>
+
+    <nav class="cx-rail cx-rail-right" data-dock data-axis="y" aria-label="Operate">
+      <span class="cx-rail-label"><i></i>operate</span>
+      <div class="cx-rail-well">
+        <a class="cx-rail-item" href="/servers?embed=1" data-view="servers" data-label="Servers" data-href="/servers?embed=1" aria-label="Servers"><svg class="dock-ic"><use href="#ic-server"></use></svg><span>Servers</span></a>
+        <a class="cx-rail-item" href="/containers?embed=1" data-view="containers" data-label="Containers" data-href="/containers?embed=1" aria-label="Containers"><svg class="dock-ic"><use href="#ic-container"></use></svg><span>Containers</span></a>
+        <a class="cx-rail-item" href="/diagnostics?embed=1" data-view="diagnostics" data-label="Diagnostics" data-href="/diagnostics?embed=1" aria-label="Diagnostics"><svg class="dock-ic"><use href="#ic-radar"></use></svg><span>Diagnostics</span></a>
+        <a class="cx-rail-item" href="/config?embed=1" data-view="config" data-label="Config" data-href="/config?embed=1" aria-label="Config"><svg class="dock-ic"><use href="#ic-config"></use></svg><span>Config</span></a>
+        <a class="cx-rail-item" href="/search?embed=1" data-view="search" data-label="Search" data-href="/search?embed=1" aria-label="Search"><svg class="dock-ic"><use href="#ic-search"></use></svg><span>Search</span></a>
+        <button class="cx-rail-item" id="scan-btn" type="button" data-action="scan" aria-label="Scan configured apps"><svg class="dock-ic"><use href="#ic-scan"></use></svg><span>Scan apps</span></button>
+        <button class="cx-rail-item" id="refresh-btn" type="button" data-action="refresh" aria-label="Refresh current view"><svg class="dock-ic"><use href="#ic-refresh"></use></svg><span>Refresh</span></button>
+      </div>
+      <span class="cx-rail-meta" id="ops-meta">— ops</span>
+    </nav>
+
+    <main class="cx-content" id="content">
+      <section class="cx-orbit-view" id="orbit-view" aria-label="Application orbit">
+        <div class="cx-orbit-tools">
+          <form class="cx-orbit-filter" id="filter-form" role="search">
+            <svg class="dock-ic" aria-hidden="true"><use href="#ic-search"></use></svg>
+            <input id="filter-input" type="text" placeholder="Filter orbit…" autocomplete="off" spellcheck="false" aria-label="Filter applications">
+            <kbd>f</kbd>
+          </form>
+          <div class="cx-view" id="side-switch" role="group" aria-label="Filter side">
+            <button type="button" data-side="all" class="on">all</button>
+            <button type="button" data-side="dev">dev</button>
+            <button type="button" data-side="ops">ops</button>
+          </div>
+          <button class="cx-mini-btn" id="labels-btn" type="button" aria-label="Toggle all labels" aria-pressed="false"><svg class="dock-ic"><use href="#ic-tag"></use></svg></button>
+        </div>
+
+        <div class="cx-stage" id="stage">
+          <div class="cx-world" id="world">
+            <div class="cx-orbit cx-orbit-a" aria-hidden="true"></div>
+            <div class="cx-orbit cx-orbit-b" aria-hidden="true"></div>
+            <div class="cx-core" id="core" aria-hidden="true">
+              <span class="cx-core-halo"></span>
+              <span class="cx-core-ring"></span>
+              <span class="cx-core-mark">hop<em>core</em></span>
+            </div>
+            <div class="cx-app-field" id="app-field"></div>
+          </div>
+          <div class="cx-tooltip" id="tooltip" hidden></div>
+          <div class="cx-empty" id="empty" hidden>
+            <span class="cx-empty-orb" aria-hidden="true"></span>
+            <strong>No applications in orbit</strong>
+            <em>Check your Kubernetes contexts or filter.</em>
+          </div>
+          <div class="cx-stage-hint" id="stage-hint">drag to pan · scroll to zoom · <kbd>f</kbd> to filter</div>
+        </div>
+
+        <div class="cx-zoom" aria-label="Zoom controls">
+          <button type="button" id="zoom-out" aria-label="Zoom out"><svg class="dock-ic"><use href="#ic-zoom-out"></use></svg></button>
+          <button type="button" id="zoom-fit" aria-label="Fit constellation"><svg class="dock-ic"><use href="#ic-fit"></use></svg></button>
+          <button type="button" id="zoom-in" aria-label="Zoom in"><svg class="dock-ic"><use href="#ic-zoom-in"></use></svg></button>
+        </div>
+
+        <aside class="cx-inspector" id="inspector" hidden aria-live="polite">
+          <button class="cx-inspector-close" id="inspector-close" type="button" aria-label="Close inspector"><svg class="dock-ic"><use href="#ic-close"></use></svg></button>
+          <div class="cx-inspector-head">
+            <span class="cx-inspector-sigil" id="inspect-sigil">--</span>
+            <div><span class="cx-inspector-kicker" id="inspect-side">application</span><h2 id="inspect-name">—</h2></div>
+          </div>
+          <p class="cx-inspector-summary" id="inspect-summary">—</p>
+          <div class="cx-inspector-grid">
+            <div><span>pods</span><b id="inspect-pods">—</b></div>
+            <div><span>ready</span><b id="inspect-ready">—</b></div>
+            <div><span>restarts</span><b id="inspect-restarts">—</b></div>
+            <div><span>cpu</span><b id="inspect-cpu">—</b></div>
+            <div><span>memory</span><b id="inspect-memory">—</b></div>
+            <div><span>namespaces</span><b id="inspect-namespaces">—</b></div>
+          </div>
+          <div class="cx-inspector-envs" id="inspect-envs"></div>
+          <a class="cx-inspector-link" id="inspect-link" href="/kubernetes">open pods <svg class="dock-ic"><use href="#ic-arrow"></use></svg></a>
+        </aside>
+      </section>
+
+      <section class="cx-frame-view" id="frame-view" hidden aria-label="Current workspace view">
+        <iframe id="frame" title="hop workspace" src="about:blank"></iframe>
+        <div class="cx-frame-loading" id="frame-loading"><span></span><em>loading view…</em></div>
+      </section>
+    </main>
+
+    <footer class="cx-footer">
+      <section class="cx-stats" aria-label="Fleet summary">
+        <div class="cx-stat"><span>pods</span><b id="stat-pods">—</b><em id="stat-pods-sub">waiting</em></div>
+        <div class="cx-stat cx-stat-ok"><span>ready</span><b id="stat-ready">—</b><em id="stat-ready-sub">—</em></div>
+        <div class="cx-stat cx-stat-warn"><span>attention</span><b id="stat-attention">—</b><em id="stat-attention-sub">—</em></div>
+        <div class="cx-stat"><span>apps</span><b id="stat-apps">—</b><em id="stat-apps-sub">—</em></div>
+        <div class="cx-stat cx-stat-ops"><span>servers</span><b id="stat-servers">—</b><em id="stat-servers-sub">—</em></div>
+      </section>
+      <span class="cx-footer-note">{{version}} · menus overlay · orbit stays live</span>
+    </footer>
+
+    <div class="cx-toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+    <div class="cx-help" id="help" hidden>
+      <div class="cx-help-backdrop" data-help-close></div>
+      <div class="cx-help-panel" role="dialog" aria-modal="true" aria-label="Cockpit shortcuts">
+        <div class="cx-help-head"><span>shortcuts</span><button type="button" data-help-close aria-label="Close help"><svg class="dock-ic"><use href="#ic-close"></use></svg></button></div>
+        <dl>
+          <div><dt><kbd>/</kbd></dt><dd>global search</dd></div>
+          <div><dt><kbd>f</kbd></dt><dd>filter orbit</dd></div>
+          <div><dt><kbd>r</kbd></dt><dd>refresh current view</dd></div>
+          <div><dt><kbd>g</kbd></dt><dd>fit constellation</dd></div>
+          <div><dt><kbd>+</kbd> <kbd>-</kbd></dt><dd>zoom in / out</dd></div>
+          <div><dt><kbd>l</kbd></dt><dd>toggle labels</dd></div>
+          <div><dt><kbd>esc</kbd></dt><dd>clear filter / close panel</dd></div>
+        </dl>
+      </div>
+    </div>
+  </div>
+  <script src="/static/context.js" defer></script>
+  <script src="/static/cockpit.js" defer></script>
+</body>
+</html>
+{{end}}

@@ -1,0 +1,67 @@
+html.embed-mode {
+  --embed-pad-x: 72px;
+  --embed-pad-y: 18px;
+  background: transparent;
+}
+
+html.embed-mode body {
+  background: transparent;
+  overflow-x: hidden;
+}
+
+html.embed-mode body::before,
+html.embed-mode .ambient,
+html.embed-mode .topbar,
+html.embed-mode .sidebar,
+html.embed-mode .sidebar-overlay,
+html.embed-mode .footer,
+html.embed-mode .palette,
+html.embed-mode .palette-scrim {
+  display: none !important;
+}
+
+html.embed-mode .app {
+  min-height: 0;
+  background: transparent;
+}
+
+html.embed-mode .app-main {
+  margin-left: 0;
+  min-height: 0;
+  padding: 0;
+}
+
+html.embed-mode .shell {
+  width: 100%;
+  max-width: none;
+  padding: var(--embed-pad-y) var(--embed-pad-x) 28px;
+}
+
+html.embed-mode .page-head,
+html.embed-mode .dash-topline {
+  padding-top: 2px;
+}
+
+html.embed-mode .toast {
+  position: sticky;
+  bottom: 12px;
+}
+
+@media (max-width: 940px) {
+  html.embed-mode {
+    --embed-pad-x: 60px;
+  }
+}
+
+@media (max-width: 720px) {
+  html.embed-mode {
+    --embed-pad-x: 50px;
+    --embed-pad-y: 12px;
+  }
+}
+
+@media (max-width: 430px) {
+  html.embed-mode {
+    --embed-pad-x: 48px;
+  }
+}

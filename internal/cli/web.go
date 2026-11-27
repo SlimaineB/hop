@@ -31,6 +31,7 @@ import (
 type webLauncher struct {
 	svc        *app.Service
 	cfg        *config.Config
+	configPath string
 	servers    *servers.Service
 	containers *containers.Service
 	providers  *providers.Set
@@ -43,8 +44,8 @@ type webLauncher struct {
 	base   string
 }
 
-func newWebLauncher(service *app.Service, cfg *config.Config) *webLauncher {
-	launcher := &webLauncher{svc: service, cfg: cfg}
+func newWebLauncher(service *app.Service, cfg *config.Config, configPath string) *webLauncher {
+	launcher := &webLauncher{svc: service, cfg: cfg, configPath: configPath}
 	if cfg == nil {
 		return launcher
 	}
@@ -87,20 +88,18 @@ func newWebLauncher(service *app.Service, cfg *config.Config) *webLauncher {
 	return launcher
 }
 
-func (l *webLauncher) ensure() (string, error) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	if l.server != nil && l.base != "" {
-		return l.base, nil
-	}
+func (l *webLauncher) newServer(contextName string, contexts []web.ContextInfo) (*web.Server, error) {
 	var backend web.Backend
 	if l.svc != nil {
 		backend = l.svc
 	}
-	server, err := web.New(backend, web.Options{
+	return web.New(backend, web.Options{
 		Bind:        l.cfg.UI.Bind,
 		Port:        l.cfg.UI.Port,
 		Theme:       l.cfg.UI.Theme,
+		ConfigPath:  l.configPath,
+		ContextName: contextName,
+		Contexts:    contexts,
 		Servers:     l.servers,
 		Shortcuts:   shortcutsOrNil(l.cfg),
 		LiveLimit:   l.cfg.Search.LiveLimit,
@@ -110,6 +109,15 @@ func (l *webLauncher) ensure() (string, error) {
 		Apps:        l.cfg.Apps,
 		Diagnostics: l.cfg.Diagnostics,
 	})
+}
+
+func (l *webLauncher) ensure() (string, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.server != nil && l.base != "" {
+		return l.base, nil
+	}
+	server, err := l.newServer("", nil)
 	if err != nil {
 		return "", err
 	}
@@ -178,7 +186,7 @@ func (l *webLauncher) Close() {
 }
 
 func (a *App) serveWeb(cmd *cobra.Command, service *app.Service, cfg *config.Config, query string) error {
-	launcher := newWebLauncher(service, cfg)
+	launcher := newWebLauncher(service, cfg, a.resolvedConfigPath())
 	defer launcher.Close()
 
 	base, err := launcher.ensure()
@@ -207,8 +215,14 @@ func (a *App) newWebCommand() *cobra.Command {
 		Use:     "web [terms...]",
 		Aliases: []string{"ui", "serve"},
 		Short:   "Launch the local web UI",
-		Args:    cobra.ArbitraryArgs,
+		Long: `Launch the local web UI. With several hop contexts configured, the UI starts on
+the selected/default context and shows a context selector in the header.`,
+		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			query := strings.Join(args, " ")
+			if a.multiContexts() {
+				return a.serveWebMulti(cmd, query)
+			}
 			cfg, _, err := config.Load(a.configPath)
 			if err != nil {
 				return err
@@ -219,7 +233,7 @@ func (a *App) newWebCommand() *cobra.Command {
 				return err
 			}
 			defer service.Close()
-			return a.serveWeb(cmd, service, cfg, strings.Join(args, " "))
+			return a.serveWeb(cmd, service, cfg, query)
 		},
 	}
 	addWebFlags(cmd, a)

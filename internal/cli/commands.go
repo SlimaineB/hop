@@ -86,6 +86,7 @@ func (a *App) newConfigCommand() *cobra.Command {
 		Short: "Manage the hop configuration",
 	}
 	cmd.AddCommand(
+		a.newConfigContextCommand(),
 		a.newConfigShortcutCommand(),
 		a.newConfigSourcesCommand(),
 		a.newConfigToggleCommand(true),

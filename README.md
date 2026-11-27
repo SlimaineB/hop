@@ -723,11 +723,24 @@ hop web --no-open 'api 12h 14h'
 
 The UI listens on `127.0.0.1` by default. `--port 0` picks a free port.
 
+When several hop contexts are configured, `hop` asks which one to use at
+launch and the web UI keeps a context selector in the header. Switching context
+reloads the current view with that context's own config, caches and services;
+the choice is remembered for the next launch.
+
 The UI is split by domain instead of forcing every object type into one search:
 
-- `/` is the Kubernetes dashboard: pod readiness, restarts, CPU and memory from
-  metrics-server, grouping by environment/application/cluster/namespace,
-  per-group health, node capacity, and a triage list;
+- `/` (and `/cockpit`) is the main integrated cockpit: floating build and
+  operate menus over the workspace (hover/focus expands their labels), embedded
+  workspace views in the center, a unified fleet orbit with pan/zoom, live
+  filters, and on-demand application diagnostics;
+- `/dashboard` is the Kubernetes dashboard: pod readiness, restarts, CPU and
+  memory from metrics-server, grouping by
+  environment/application/cluster/namespace, per-group health, node capacity,
+  and a triage list;
+- `/config` is the local config studio: inspect/edit the hop YAML file, see a
+  section inventory, validate before writing, reject stale saves, and create a
+  missing config file safely;
 - `/kubernetes` is the pod inventory with its own filter, stats and context
   pills;
 - `/servers` is the server dashboard: inventory, HTTP/SSH checks, ping/TCP
@@ -748,7 +761,8 @@ The dashboard APIs are:
 
 - `/api/dashboard` for the Kubernetes overview (`?refresh=1` bypasses caches);
 - `/api/dashboard/servers` for asynchronous server checks;
-- `/api/diagnostics/apps` for application probe reports.
+- `/api/diagnostics/apps` for application probe reports;
+- `/api/config` (`GET`/`POST`) for reading and safely saving the local config YAML.
 
 The UI also exposes:
 
@@ -802,6 +816,9 @@ PVC, Node); click any node for facts and a copyable `kubectl` command.
 | `hop search [terms...]` | Non-interactive pod search, alias `find` |
 | `hop server NAME` | Show one VM, add `--check` or `--json` |
 | `hop ssh NAME [command...]` | Open SSH or run a remote command |
+| `hop config context` | List hop contexts and show the default |
+| `hop config context use NAME` | Select the default hop context |
+| `hop config context init NAME` | Create a new hop context config file |
 | `hop config server add NAME ...` | Add or update a VM |
 | `hop config server list` | List discovered VMs/servers |
 | `hop config server remove NAME` | Remove a config VM entry |
@@ -825,6 +842,8 @@ Main flags:
 | Flag | Effect |
 |---|---|
 | `--config` | Config file path |
+| `--hop-context` | Hop context to use, skipping the launch prompt |
+| `--no-context-prompt` | Never ask which hop context to use |
 | `--context` | Restrict to a context, repeatable, glob supported |
 | `--namespace` | Restrict to a namespace, repeatable |
 | `--env` | Select `dev`, `uat`, `prod` (configurable); required by default for pod search |
@@ -852,6 +871,36 @@ Resolution order:
 4. `~/.config/hop/config.yaml`.
 
 Without a config file, the defaults are enough.
+
+### Hop contexts
+
+A hop context is just a named config file. It can represent an environment, a
+team, a set of applications, or anything else you need to keep separate.
+
+```text
+~/.config/hop/config.yaml          # default context
+~/.config/hop/contexts/work.yaml   # context named "work"
+~/.config/hop/contexts/lab.yaml    # context named "lab"
+~/.config/hop/active-context       # last selected context
+```
+
+The base `config.yaml` is exposed as the `default` context when it exists.
+Additional `*.yaml` or `*.yml` files in `contexts/` become contexts named after
+the file. Create one by adding a file; no registry or index is required.
+
+```bash
+hop --hop-context work
+hop config context            # list contexts, mark the default
+hop config context init lab    # create contexts/lab.yaml
+hop config context use work   # remember work for future launches
+HOP_CONTEXT=work hop web      # one-shot override
+```
+
+If several contexts exist, interactive launches ask which one to use. Scripts
+and non-interactive commands use the persisted default (`active-context`), then
+the `default` context, then the first context alphabetically. The web UI context
+selector switches the live config and persists the selection.
+
 
 ```bash
 hop config init
@@ -1258,7 +1307,7 @@ The lab tokens are fake (`JIRA_TOKEN` and `GITLAB_TOKEN` are set to `lab-token`)
 - The web server is intended for local use.
 - Jira support uses REST API v2 and GitLab uses v4; both need network access
   plus a token for search/create. Other ticket providers are not bundled yet.
-- Container actions are CLI/cockpit only for now; there is no dedicated
+- Container actions are CLI/TUI cockpit only for now; there is no dedicated
   container page in the web UI.
 - The example links and browser shortcuts point to `example.com`: adapt them to
   your Grafana / Loki / Mimir / Jira setup.

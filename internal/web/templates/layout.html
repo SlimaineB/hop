@@ -1,3 +1,14 @@
+{{define "context-switch"}}
+{{if gt (len .Contexts) 1}}
+<label class="context-switch" title="Active hop context">
+  <span class="context-switch-label">context</span>
+  <select id="hop-context-select" aria-label="Active hop context">
+    {{range .Contexts}}<option value="{{.Name}}"{{if eq .Name $.Active}} selected{{end}}>{{.Label}}</option>{{end}}
+  </select>
+</label>
+{{end}}
+{{end}}
+
 {{define "head"}}
 <!doctype html>
 <html lang="en" data-theme="dark">
@@ -7,7 +18,10 @@
   <meta name="color-scheme" content="dark light">
   <title>{{if .Title}}{{.Title}} · {{end}}hop</title>
   <script src="/static/theme.js"></script>
+  <script src="/static/embed.js"></script>
   <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/embed.css">
+  {{if eq .Script "config.js"}}<link rel="stylesheet" href="/static/config.css">{{end}}
 </head>
 <body>
   <div class="ambient" aria-hidden="true"></div>
@@ -23,8 +37,13 @@
         </a>
       </div>
       <nav class="side-nav">
-        <span class="side-label">Workspace</span>
+        <span class="side-label">Main</span>
         <a class="side-link" data-nav="/" href="/">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="2.4"></circle><path d="M12 4v3M20 12h-3M12 20v-3M4 12h3"></path></svg>
+          <span class="side-text">Cockpit</span>
+        </a>
+        <span class="side-label side-label-gap">Submenus</span>
+        <a class="side-link" data-nav="/dashboard" href="/dashboard">
           <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"></rect><rect x="14" y="3" width="7" height="7" rx="1.5"></rect><rect x="3" y="14" width="7" height="7" rx="1.5"></rect><rect x="14" y="14" width="7" height="7" rx="1.5"></rect></svg>
           <span class="side-text">Overview</span>
         </a>
@@ -57,6 +76,11 @@
           <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v5a2 2 0 0 0 0 4v5H4v-5a2 2 0 0 0 0-4V5Z"></path><path d="M12 7v10"></path></svg>
           <span class="side-text">Tickets</span>
         </a>
+        <span class="side-label side-label-gap">System</span>
+        <a class="side-link" data-nav="/config" href="/config">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"></path><circle cx="15" cy="7" r="2"></circle><circle cx="7" cy="17" r="2"></circle></svg>
+          <span class="side-text">Config</span>
+        </a>
       </nav>
       <div class="sidebar-foot">
         <button class="side-command" type="button" data-palette-open>
@@ -80,6 +104,7 @@
           </div>
         </div>
         <div class="topbar-right">
+          {{template "context-switch" contextMenu}}
           <button class="topbar-search" type="button" data-palette-open aria-label="Open global search">
             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2"></path></svg>
             <span>Search</span>
@@ -122,6 +147,7 @@
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
   <script src="/static/common.js" defer></script>
+  <script src="/static/context.js" defer></script>
   {{if .Script}}<script src="/static/{{.Script}}" defer></script>{{end}}
 </body>
 </html>

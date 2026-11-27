@@ -57,7 +57,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	if !onlyGET(w, r) {
 		return
 	}
-	if r.URL.Path != "/" && r.URL.Path != "/dashboard" {
+	if r.URL.Path != "/dashboard" {
 		http.NotFound(w, r)
 		return
 	}
@@ -69,6 +69,17 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		Title:  "Overview",
 		Script: "dashboard.js",
 	})
+}
+
+func (s *Server) handleCockpit(w http.ResponseWriter, r *http.Request) {
+	if !onlyGET(w, r) {
+		return
+	}
+	if r.URL.Path != "/" && r.URL.Path != "/cockpit" {
+		http.NotFound(w, r)
+		return
+	}
+	s.render(w, http.StatusOK, "cockpit.html", struct{}{})
 }
 
 func (s *Server) handleAPIDashboard(w http.ResponseWriter, r *http.Request) {

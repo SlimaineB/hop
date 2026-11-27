@@ -45,7 +45,7 @@ prints grouped results.`,
 				return err
 			}
 			defer service.Close()
-			launcher := newWebLauncher(service, cfg)
+			launcher := newWebLauncher(service, cfg, a.resolvedConfigPath())
 			defer launcher.Close()
 
 			query := strings.Join(args, " ")

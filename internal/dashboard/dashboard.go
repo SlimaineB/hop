@@ -67,22 +67,23 @@ type Totals struct {
 }
 
 type Bucket struct {
-	Key        string `json:"key"`
-	Title      string `json:"title"`
-	Kind       string `json:"kind"`
-	Pods       int    `json:"pods"`
-	Ready      int    `json:"ready"`
-	NotReady   int    `json:"not_ready"`
-	Running    int    `json:"running"`
-	Pending    int    `json:"pending"`
-	Failed     int    `json:"failed"`
-	Completed  int    `json:"completed"`
-	Restarts   int    `json:"restarts"`
-	Contexts   int    `json:"contexts"`
-	Namespaces int    `json:"namespaces"`
-	Apps       int    `json:"apps"`
-	CPU        int64  `json:"cpu_millicores"`
-	Memory     int64  `json:"memory_bytes"`
+	Key        string         `json:"key"`
+	Title      string         `json:"title"`
+	Kind       string         `json:"kind"`
+	Pods       int            `json:"pods"`
+	Ready      int            `json:"ready"`
+	NotReady   int            `json:"not_ready"`
+	Running    int            `json:"running"`
+	Pending    int            `json:"pending"`
+	Failed     int            `json:"failed"`
+	Completed  int            `json:"completed"`
+	Restarts   int            `json:"restarts"`
+	Contexts   int            `json:"contexts"`
+	Namespaces int            `json:"namespaces"`
+	Apps       int            `json:"apps"`
+	CPU        int64          `json:"cpu_millicores"`
+	Memory     int64          `json:"memory_bytes"`
+	Envs       map[string]int `json:"envs,omitempty"`
 }
 
 type NodeCard struct {
@@ -225,6 +226,7 @@ func (s *Service) aggregate(overview *Overview, snapshot *app.Snapshot, metrics 
 		contexts   map[string]bool
 		namespaces map[string]bool
 		apps       map[string]bool
+		envs       map[string]int
 	}
 	groups := map[string]map[string]*bucketAggregate{
 		"env":       {},
@@ -263,6 +265,7 @@ func (s *Service) aggregate(overview *Overview, snapshot *app.Snapshot, metrics 
 					contexts:   map[string]bool{},
 					namespaces: map[string]bool{},
 					apps:       map[string]bool{},
+					envs:       map[string]int{},
 				}
 			}
 			bucket := groups[kind][key]
@@ -270,6 +273,7 @@ func (s *Service) aggregate(overview *Overview, snapshot *app.Snapshot, metrics 
 			bucket.contexts[pod.Context] = true
 			bucket.namespaces[pod.Namespace] = true
 			bucket.apps[appName] = true
+			bucket.envs[env]++
 		}
 
 		totals.Pods++
@@ -366,6 +370,9 @@ func (s *Service) aggregate(overview *Overview, snapshot *app.Snapshot, metrics 
 			aggregate.Contexts = len(aggregate.contexts)
 			aggregate.Namespaces = len(aggregate.namespaces)
 			aggregate.Apps = len(aggregate.apps)
+			if len(aggregate.envs) > 0 {
+				aggregate.Envs = aggregate.envs
+			}
 			buckets = append(buckets, aggregate.Bucket)
 		}
 		sortBuckets(buckets)

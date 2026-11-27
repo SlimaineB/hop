@@ -16,8 +16,12 @@ import (
 )
 
 type App struct {
-	configPath string
-	flags      runtimeFlags
+	configPath      string
+	hopContext      string
+	contextName     string
+	contexts        *config.ContextSet
+	noContextPrompt bool
+	flags           runtimeFlags
 }
 
 type runtimeFlags struct {
@@ -52,7 +56,7 @@ func normalizeArgs(args []string) []string {
 	out := append([]string(nil), args...)
 	valueFlags := map[string]bool{
 		"--bind": true, "--concurrency": true, "--config": true, "--context": true,
-		"--env": true, "--limit": true, "--min-score": true, "--namespace": true, "--port": true, "--timeout": true,
+		"--env": true, "--hop-context": true, "--limit": true, "--min-score": true, "--namespace": true, "--port": true, "--timeout": true,
 	}
 	for i := 1; i < len(out); i++ {
 		if out[i] == "--" {
@@ -109,11 +113,17 @@ Prefer the explicit categories when possible:
   hop demo             full local demo without Kubernetes or external services
   hop features         list, enable or disable optional features
 
+Hop contexts live next to the base config in ~/.config/hop/contexts. When
+several are configured, hop asks which one to use; --hop-context NAME skips the
+prompt and 'hop config context use NAME' changes the default.
+
 Provider aliases are generated from the config, so 'hop jira OPS-123'
 works without a --provider flag.
 
 Examples:
   hop
+  hop --hop-context work
+  hop config context use work
   hop all git hop
   hop pod api prod -2h
   hop vm supervision uat
@@ -125,7 +135,13 @@ Examples:
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args:          cobra.ArbitraryArgs,
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			return a.prepareHopContext(cmd)
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 && a.multiContexts() {
+				return a.serveWebMulti(cmd, "")
+			}
 			cfg, path, err := config.Load(a.configPath)
 			if err != nil {
 				return err
@@ -172,6 +188,8 @@ Examples:
 	}
 
 	root.PersistentFlags().StringVar(&a.configPath, "config", "", "config file path (default: ~/.config/hop/config.yaml)")
+	root.PersistentFlags().StringVar(&a.hopContext, "hop-context", "", "hop context to use (default: last selected context)")
+	root.PersistentFlags().BoolVar(&a.noContextPrompt, "no-context-prompt", false, "never prompt for a hop context")
 	addFilterFlags(root, a)
 	addWebFlags(root, a)
 	root.Flags().BoolVar(&a.flags.refresh, "refresh", false, "force a refresh of all clusters")

@@ -305,7 +305,12 @@
   el("dash-search").addEventListener("submit", function (event) {
     event.preventDefault();
     const query = el("dash-search-input").value.trim();
-    window.location.href = "/search" + (query ? "?q=" + encodeURIComponent(query) : "");
+    const url = new URL("/search", window.location.origin);
+    if (query) url.searchParams.set("q", query);
+    if (new URLSearchParams(window.location.search).get("embed") === "1") {
+      url.searchParams.set("embed", "1");
+    }
+    window.location.href = url.pathname + url.search;
   });
 
   document.addEventListener("keydown", function (event) {
