@@ -94,7 +94,11 @@
     const attention = Number(data.issue_total != null ? data.issue_total : (data.issues || []).length);
     const cpuPct = pct(totals.cpu_millicores, totals.cpu_capacity_millicores);
     const memPct = pct(totals.memory_bytes, totals.memory_capacity_bytes);
-    setKPI("pods", helpers.fmtNum(pods), totals.contexts + " ctx · " + totals.namespaces + " ns");
+    let podsSub = totals.contexts + " ctx · " + totals.namespaces + " ns";
+    if (Number(totals.pods_estimated || 0) > pods) {
+      podsSub += " · capped at " + helpers.fmtNum(pods);
+    }
+    setKPI("pods", helpers.fmtNum(pods), podsSub);
     setKPI("ready", pods ? Math.round((healthy / pods) * 100) + "%" : "—", helpers.fmtNum(ready) + " ready" + (completed ? " · " + helpers.fmtNum(completed) + " completed" : ""));
     setKPI("bad", helpers.fmtNum(attention), attention ? "requires triage" : "all clear");
     setKPI("restarts", helpers.fmtNum(totals.restarts || 0));

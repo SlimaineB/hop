@@ -170,6 +170,7 @@ func (p *ClientGoProvider) ListPods(ctx context.Context, opts ListOptions) (*Lis
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	sem := make(chan struct{}, concurrency)
+	var estimatedTotal int64
 
 	for _, clusterCtx := range selected {
 		wg.Add(1)
@@ -188,7 +189,7 @@ func (p *ClientGoProvider) ListPods(ctx context.Context, opts ListOptions) (*Lis
 			requestCtx, cancel := context.WithTimeout(ctx, timeout)
 			defer cancel()
 
-			pods, err := p.listContext(requestCtx, c, opts)
+			pods, estimate, err := p.listContext(requestCtx, c, opts)
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {
@@ -196,11 +197,29 @@ func (p *ClientGoProvider) ListPods(ctx context.Context, opts ListOptions) (*Lis
 				return
 			}
 			result.Pods = append(result.Pods, pods...)
+			estimatedTotal += estimate
 		}(clusterCtx)
 	}
 	wg.Wait()
 
 	result.Duration = time.Since(start)
+	if estimatedTotal <= 0 {
+		estimatedTotal = int64(len(result.Pods))
+	}
+	result.EstimatedTotal = estimatedTotal
+	if opts.MaxPods > 0 && len(result.Pods) > opts.MaxPods {
+		sort.SliceStable(result.Pods, func(i, j int) bool {
+			return result.Pods[i].StartTime.After(result.Pods[j].StartTime)
+		})
+		result.Pods = result.Pods[:opts.MaxPods]
+		result.Truncated = true
+		if result.EstimatedTotal < int64(opts.MaxPods) {
+			result.EstimatedTotal = int64(opts.MaxPods)
+		}
+	}
+	if result.EstimatedTotal > int64(len(result.Pods)) {
+		result.Truncated = true
+	}
 	sort.Slice(result.Pods, func(i, j int) bool {
 		a, b := result.Pods[i], result.Pods[j]
 		if a.Context != b.Context {
@@ -214,10 +233,10 @@ func (p *ClientGoProvider) ListPods(ctx context.Context, opts ListOptions) (*Lis
 	return result, nil
 }
 
-func (p *ClientGoProvider) listContext(ctx context.Context, c Context, opts ListOptions) ([]Pod, error) {
+func (p *ClientGoProvider) listContext(ctx context.Context, c Context, opts ListOptions) ([]Pod, int64, error) {
 	client, err := p.client(c.Name)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	namespaces := opts.Namespaces
 	if len(namespaces) == 0 {
@@ -225,10 +244,13 @@ func (p *ClientGoProvider) listContext(ctx context.Context, c Context, opts List
 	}
 
 	var pods []Pod
+	var estimate int64
+	budget := opts.MaxPodsPerContext
 	for _, namespace := range namespaces {
-		rawPods, err := listPodsInNamespace(ctx, client, namespace)
+		rawPods, namespaceEstimate, err := listPodsInNamespace(ctx, client, namespace, budget)
+		estimate += namespaceEstimate
 		if err != nil {
-			return pods, fmt.Errorf("namespace %s: %w", namespace, err)
+			return pods, estimate, fmt.Errorf("namespace %s: %w", namespace, err)
 		}
 		for i := range rawPods {
 			raw := &rawPods[i]
@@ -237,29 +259,70 @@ func (p *ClientGoProvider) listContext(ctx context.Context, c Context, opts List
 			}
 			pods = append(pods, convertPod(c, raw))
 		}
+		if budget > 0 {
+			budget -= len(rawPods)
+			if budget <= 0 {
+				break
+			}
+		}
 	}
 
 	if opts.ResolveOwners {
 		resolveOwners(ctx, client, pods)
 	}
-	return pods, nil
+	return pods, estimate, nil
 }
 
-func listPodsInNamespace(ctx context.Context, client kubernetes.Interface, namespace string) ([]corev1.Pod, error) {
+func listPodsInNamespace(ctx context.Context, client kubernetes.Interface, namespace string, maxPods int) ([]corev1.Pod, int64, error) {
+	if maxPods <= 0 {
+		var pods []corev1.Pod
+		listOptions := metav1.ListOptions{Limit: 500}
+		for {
+			list, err := client.CoreV1().Pods(namespace).List(ctx, listOptions)
+			if err != nil {
+				return nil, int64(len(pods)), err
+			}
+			pods = append(pods, list.Items...)
+			if list.Continue == "" {
+				break
+			}
+			listOptions.Continue = list.Continue
+		}
+		return pods, int64(len(pods)), nil
+	}
+
 	var pods []corev1.Pod
-	listOptions := metav1.ListOptions{Limit: 500}
-	for {
+	var estimate int64
+	remaining := maxPods
+	listOptions := metav1.ListOptions{}
+	for remaining > 0 {
+		limit := 500
+		if remaining < limit {
+			limit = remaining
+		}
+		listOptions.Limit = int64(limit)
 		list, err := client.CoreV1().Pods(namespace).List(ctx, listOptions)
 		if err != nil {
-			return nil, err
+			return nil, estimate, err
 		}
+		estimate += int64(len(list.Items))
 		pods = append(pods, list.Items...)
-		if list.Continue == "" {
+		remaining -= len(list.Items)
+		if list.Continue == "" || len(list.Items) < limit {
+			break
+		}
+		if remaining <= 0 {
+			if list.RemainingItemCount != nil {
+				estimate += *list.RemainingItemCount
+			}
 			break
 		}
 		listOptions.Continue = list.Continue
 	}
-	return pods, nil
+	if maxPods > 0 && len(pods) > maxPods {
+		pods = pods[:maxPods]
+	}
+	return pods, estimate, nil
 }
 
 func convertPod(c Context, pod *corev1.Pod) Pod {
@@ -277,7 +340,20 @@ func convertPod(c Context, pod *corev1.Pod) Pod {
 	containers := make([]Container, 0, len(pod.Spec.Containers))
 	images := make([]string, 0, len(pod.Spec.Containers))
 	seenImages := map[string]bool{}
+	var cpuRequest, cpuLimit, memoryRequest, memoryLimit int64
 	for _, spec := range pod.Spec.Containers {
+		if quantity, ok := spec.Resources.Requests[corev1.ResourceCPU]; ok {
+			cpuRequest += quantity.MilliValue()
+		}
+		if quantity, ok := spec.Resources.Limits[corev1.ResourceCPU]; ok {
+			cpuLimit += quantity.MilliValue()
+		}
+		if quantity, ok := spec.Resources.Requests[corev1.ResourceMemory]; ok {
+			memoryRequest += quantity.Value()
+		}
+		if quantity, ok := spec.Resources.Limits[corev1.ResourceMemory]; ok {
+			memoryLimit += quantity.Value()
+		}
 		container := Container{Name: spec.Name, Image: spec.Image}
 		for _, port := range spec.Ports {
 			container.Ports = append(container.Ports, Port{
@@ -364,6 +440,10 @@ func convertPod(c Context, pod *corev1.Pod) Pod {
 		Images:          images,
 		Containers:      containers,
 		ServiceAccount:  pod.Spec.ServiceAccountName,
+		CPURequest:      cpuRequest,
+		CPULimit:        cpuLimit,
+		MemoryRequest:   memoryRequest,
+		MemoryLimit:     memoryLimit,
 	}
 }
 

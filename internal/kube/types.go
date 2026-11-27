@@ -57,6 +57,10 @@ type Pod struct {
 	Images          []string          `json:"images,omitempty"`
 	Containers      []Container       `json:"containers,omitempty"`
 	ServiceAccount  string            `json:"service_account,omitempty"`
+	CPURequest      int64             `json:"cpu_request_millicores,omitempty"`
+	CPULimit        int64             `json:"cpu_limit_millicores,omitempty"`
+	MemoryRequest   int64             `json:"memory_request_bytes,omitempty"`
+	MemoryLimit     int64             `json:"memory_limit_bytes,omitempty"`
 }
 
 func (p Pod) Age() time.Duration {
@@ -210,11 +214,13 @@ type ContextError struct {
 }
 
 type ListResult struct {
-	Pods      []Pod          `json:"pods"`
-	Contexts  []Context      `json:"contexts"`
-	Errors    []ContextError `json:"errors,omitempty"`
-	FetchedAt time.Time      `json:"fetched_at"`
-	Duration  time.Duration  `json:"duration"`
+	Pods           []Pod          `json:"pods"`
+	Contexts       []Context      `json:"contexts"`
+	Errors         []ContextError `json:"errors,omitempty"`
+	FetchedAt      time.Time      `json:"fetched_at"`
+	Duration       time.Duration  `json:"duration"`
+	Truncated      bool           `json:"truncated,omitempty"`
+	EstimatedTotal int64          `json:"estimated_total,omitempty"`
 }
 
 type ListOptions struct {
@@ -224,6 +230,8 @@ type ListOptions struct {
 	Concurrency       int
 	Timeout           time.Duration
 	ResolveOwners     bool
+	MaxPods           int
+	MaxPodsPerContext int
 }
 
 type Provider interface {

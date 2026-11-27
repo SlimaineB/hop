@@ -2,11 +2,13 @@ package actions
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -53,7 +55,7 @@ func Commands(pod kube.Pod, opts Options) []Command {
 		{
 			ID:          "exec",
 			Label:       "Shell",
-			Command:     kubectlCommand(pod, opts, "exec", "-it", shellQuote(pod.Name), "--", "sh"),
+			Command:     execCommand(pod, opts),
 			Description: "Open a shell in the first container",
 		},
 		{
@@ -95,6 +97,31 @@ func Commands(pod kube.Pod, opts Options) []Command {
 		})
 	}
 	return commands
+}
+
+func firstContainer(pod kube.Pod) string {
+	if len(pod.Containers) == 0 {
+		return ""
+	}
+	return pod.Containers[0].Name
+}
+
+func execCommand(pod kube.Pod, opts Options) string {
+	args := []string{"exec", "-it"}
+	if container := firstContainer(pod); container != "" {
+		args = append(args, "-c", shellQuote(container))
+	}
+	args = append(args, shellQuote(pod.Name), "--", "sh")
+	return kubectlCommand(pod, opts, args...)
+}
+
+func Exec(pod kube.Pod, opts Options) *exec.Cmd {
+	args := []string{"exec", "-it"}
+	if container := firstContainer(pod); container != "" {
+		args = append(args, "-c", container)
+	}
+	args = append(args, pod.Name, "--", "sh")
+	return Kubectl(pod, opts, args...)
 }
 
 func logsCommand(pod kube.Pod, opts Options) string {
@@ -173,9 +200,13 @@ func K9s(pod kube.Pod, opts Options) *exec.Cmd {
 }
 
 func Kubectl(pod kube.Pod, opts Options, args ...string) *exec.Cmd {
+	return KubectlContext(context.Background(), pod, opts, args...)
+}
+
+func KubectlContext(ctx context.Context, pod kube.Pod, opts Options, args ...string) *exec.Cmd {
 	full := []string{"--context", pod.Context, "-n", pod.Namespace}
 	full = append(full, args...)
-	cmd := exec.Command("kubectl", full...)
+	cmd := exec.CommandContext(ctx, "kubectl", full...)
 	applyKubeconfigEnv(cmd, opts)
 	return cmd
 }
@@ -191,6 +222,27 @@ func Logs(pod kube.Pod, opts Options) *exec.Cmd {
 
 func Describe(pod kube.Pod, opts Options) *exec.Cmd {
 	return Kubectl(pod, opts, "describe", "pod", pod.Name)
+}
+
+func LogsTail(pod kube.Pod, opts Options, lines int) *exec.Cmd {
+	return Kubectl(pod, opts, logsTailArgs(pod, opts, lines)...)
+}
+
+func logsTailArgs(pod kube.Pod, opts Options, lines int) []string {
+	if lines <= 0 {
+		lines = 300
+	}
+	args := []string{"logs", "--tail", strconv.Itoa(lines), "--all-containers=true", "--timestamps=true", "--prefix"}
+	if !opts.From.IsZero() {
+		args = append(args, "--since-time", opts.From.UTC().Format(time.RFC3339))
+	}
+	return append(args, pod.Name)
+}
+
+func TailLogs(ctx context.Context, pod kube.Pod, opts Options, lines int) (string, error) {
+	cmd := KubectlContext(ctx, pod, opts, logsTailArgs(pod, opts, lines)...)
+	out, err := cmd.CombinedOutput()
+	return string(out), err
 }
 
 func DescribePaged(pod kube.Pod, opts Options) *exec.Cmd {

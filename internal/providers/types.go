@@ -40,4 +40,10 @@ type TicketProvider interface {
 	URL(key string) string
 }
 
+// KeyNormalizer canonicalizes provider-specific ticket keys. Providers should
+// implement it when a key can be written in several forms (URL, short ID...).
+type KeyNormalizer interface {
+	NormalizeKey(value string) (string, bool)
+}
+
 type Factory func(id string, cfg config.ProviderConfig) (TicketProvider, error)

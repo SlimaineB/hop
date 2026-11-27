@@ -219,11 +219,13 @@ func (m ServerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.checkErr = msg.err
 			m.check = nil
+			m.status = "checks: " + msg.err.Error()
 			return m, nil
 		}
 		m.checkErr = nil
 		m.check = &msg.result
 		m.checks[msg.name] = msg.result
+		m.status = "checks complete"
 		return m, nil
 
 	case statusMsg:
@@ -330,10 +332,27 @@ func (m ServerModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return actionDoneMsg{label: "ssh", err: err}
 		})
 	case "c":
+		hit, ok := m.selected()
+		if !ok {
+			m.status = "no server selected"
+			return m, nil
+		}
+		if m.svc == nil {
+			m.status = "server inventory unavailable"
+			return m, nil
+		}
 		m.checkSeq++
 		m.checking = true
 		m.checkErr = nil
-		return m, tea.Batch(m.spinner.Tick, m.checkCmd())
+		m.checkName = hit.Server.Name
+		m.status = "running checks…"
+		cmd := m.checkCmd()
+		if cmd == nil {
+			m.checking = false
+			m.status = "checks unavailable"
+			return m, nil
+		}
+		return m, tea.Batch(m.spinner.Tick, cmd)
 	case "y":
 		hit, ok := m.selected()
 		if !ok {
@@ -484,7 +503,7 @@ func (m ServerModel) headerView(width int) string {
 		parts = append(parts, fmt.Sprintf("%d servers", len(m.hits)))
 	}
 	if m.checking {
-		parts = append(parts, styleDim.Render("checks…"))
+		parts = append(parts, m.spinner.View()+styleDim.Render(" checks…"))
 	}
 	if m.status != "" {
 		parts = append(parts, styleDim.Render(clip(m.status, max(18, width/3))))
@@ -555,7 +574,7 @@ func (m ServerModel) previewView(width, height int) string {
 	if m.checkErr != nil {
 		lines = append(lines, styleErr.Render("error: "+clip(m.checkErr.Error(), width-6)))
 	} else if m.checking {
-		lines = append(lines, m.spinner.View()+" running checks...")
+		lines = append(lines, m.spinner.View()+" running HTTP, ping, TCP and SSH checks…")
 	} else if m.check == nil || m.checkName != server.Name {
 		lines = append(lines, styleDim.Render("press c to run checks"))
 	} else {
@@ -573,6 +592,34 @@ func (m ServerModel) previewView(width, height int) string {
 			if len(info.FailedUnits) > 0 {
 				lines = append(lines, styleWarn.Render("failed   ")+clip(strings.Join(info.FailedUnits, ", "), width-10))
 			}
+		}
+		network := m.check.Network
+		if network.Checked {
+			ping := "no response"
+			if network.Ping.OK {
+				ping = fmt.Sprintf("%dms", network.Ping.LatencyMS)
+			} else if network.Reachable {
+				ping = "tcp only"
+			}
+			ports := make([]string, 0, len(network.Ports))
+			for _, port := range network.Ports {
+				state := "closed"
+				if port.Open {
+					state = "open"
+				} else if port.State != "" {
+					state = port.State
+				}
+				ports = append(ports, fmt.Sprintf("%d %s", port.Port, state))
+			}
+			line := "network  " + ping
+			if len(ports) > 0 {
+				line += " · " + strings.Join(ports, " · ")
+			}
+			style := styleMuted
+			if !network.Reachable {
+				style = styleErr
+			}
+			lines = append(lines, style.Render(clip(line, width-4)))
 		}
 	}
 	lines = append(lines, "")
@@ -625,7 +672,7 @@ func (m ServerModel) helpView() string {
 		styleHelpKey.Render("/ or i") + styleDim.Render("      edit search tags"),
 		styleHelpKey.Render("enter / o") + styleDim.Render("   open the unified web UI"),
 		styleHelpKey.Render("s") + styleDim.Render("           open SSH"),
-		styleHelpKey.Render("c") + styleDim.Render("           run metrics, health and SSH checks"),
+		styleHelpKey.Render("c") + styleDim.Render("           run HTTP, ping, TCP and SSH checks"),
 		styleHelpKey.Render("y") + styleDim.Render("           copy the SSH command"),
 		styleHelpKey.Render("r") + styleDim.Render("           reload the inventory"),
 		styleHelpKey.Render("g / G") + styleDim.Render("       first / last"),

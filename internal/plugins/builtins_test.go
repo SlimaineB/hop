@@ -38,7 +38,7 @@ func TestBuildSkipsDisabledSources(t *testing.T) {
 
 func TestCatalogMatchesBuiltinIDs(t *testing.T) {
 	want := map[string]bool{
-		"pods": true, "servers": true, "repos": true,
+		"pods": true, "servers": true, "containers": true, "repos": true,
 		"packages": true, "tickets": true, "shortcuts": true,
 	}
 	for _, info := range Catalog() {

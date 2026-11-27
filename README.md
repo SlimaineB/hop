@@ -5,7 +5,8 @@
 **Find the right pod, VM, repository, package, or ticket. Open it without leaving the terminal.**
 
 A modular cockpit over Kubernetes clusters, SSH inventory, local Git
-repositories, container registries, browser shortcuts, and Jira-style tickets.
+repositories, container registries, Docker/Podman containers, browser
+shortcuts, and Jira/GitLab-style tickets.
 Unified TUI and local web UI, live watch, time ranges, pod topology, node info,
 Grafana / Loki / Mimir links, VM checks, SSH access, and opt-in command plugins.
 
@@ -33,17 +34,18 @@ No daemon, no fzf, no copy-pasting pod names, SSH hosts, or ticket keys.
 | Time range | `12h 14h`, `-2h`, `from:… to:…` for logs and metrics |
 | TUI | List, pod preview, node info, keyboard actions |
 | Kubernetes dashboard | Fleet KPIs, env/app/cluster/namespace health, nodes, triage |
-| Server dashboard | Inventory, HTTP/SSH checks, memory, disk, failed units |
+| Server dashboard | Inventory, HTTP/SSH/ping/TCP checks, memory, disk, failed units |
 | Local web UI | Fast search, pod page, node, events, YAML |
 | Actions | k9s, logs, describe, node, browser, clipboard |
 | Observability | Grafana, Loki, and Mimir templates per workspace |
 | VM inventory | Discovers `~/.ssh/config` hosts and `servers` entries |
-| VM checks | HTTP metrics/health, uptime, load, memory, disk, failed units |
+| VM checks | HTTP metrics/health, ping, TCP ports, uptime, load, memory, disk, failed units |
 | SSH | Copy the SSH command or open an interactive session |
 | Pod topology | Ingress, Service, EndpointSlice, Pod, owner chain, PVC, Node |
 | Browser shortcuts | `hop link jira` opens configured links by keyword |
-| Issue providers | Open/search/create Jira tickets, extensible to other providers |
-| Cockpit search | One query across pods, VMs, repos, packages, tickets, shortcuts |
+| Issue providers | Open/search/create Jira and GitLab tickets, extensible providers |
+| Local containers | Search Docker/Podman containers, logs, shell, inspect, stats |
+| Cockpit search | One query across pods, VMs, repos, packages, containers, tickets, shortcuts |
 | Git repositories | Discovers repos, branches, commits, dirty state, ahead/behind |
 | Git links | GitHub / GitLab repo, branch, commit, MR and new-MR links |
 | Packages | GHCR, GitLab and Docker registry images with live tags |
@@ -132,6 +134,11 @@ hop vm supervision uat --table
 hop git hop
 hop git --links
 hop pkg nginx
+
+# Local Docker/Podman containers
+hop ctr
+hop ctr --running
+hop ctr logs hop-lab-jira-1 -n 50
 
 # Sources: inspect and toggle without deleting config
 hop config sources
@@ -244,7 +251,8 @@ The second positional argument is treated as `user@host` only when it contains
 ```bash
 hop config server add web01 \
   --host 10.0.0.20 --user ubuntu --port 2222 \
-  --env prod --tags web,prod --no-ssh-checks
+  --env prod --tags web,prod --no-ssh-checks \
+  --check-port 443 --check-port 9100
 ```
 
 Equivalent YAML:
@@ -264,6 +272,7 @@ servers:
     env: prod
     tags: [db, prod]
     ssh_checks: false
+    check_ports: [5432, 9100]
 ```
 
 If `metrics_url` is omitted, `hop` checks
@@ -271,9 +280,16 @@ If `metrics_url` is omitted, `hop` checks
 read-only SSH script (`uptime`, load, CPU, `free`, `df`, `systemctl --failed`)
 with `BatchMode=yes`. Disable them per server with `ssh_checks: false`.
 
+Network checks run ICMP ping and TCP probes. The SSH port is always probed;
+`check_ports` adds explicit ports (for example databases or app ports). Ports
+are reported as open, closed or filtered. If ICMP is blocked but TCP works, the
+server is still considered reachable. Disable network probes per server with
+`network_checks: false`.
+
 The unified web UI also lists VMs when the query contains `vm`, but the
-dedicated `/servers` page is the primary server view. Server detail pages are
-served at `/server?name=…`; APIs are `/api/servers` and `/api/server` (add
+dedicated `/servers` page is the primary server view. Server detail pages at
+`/server?name=…` show resource gauges, the machine snapshot, ping/TCP checks,
+check latency and SSH access; APIs are `/api/servers` and `/api/server` (add
 `check=1` to run checks).
 
 ## Cockpit search
@@ -297,6 +313,7 @@ hop all --plain "vm supervision"
 | VMs / SSH | `servers` | `vm`, `vms` | `~/.ssh/config` and `servers` |
 | Git repositories | `repos` | `git`, `repos` | Local discovery, GitHub/GitLab links |
 | Packages | `packages` | `pkg`, `packages`, `registry` | GHCR, GitLab, Docker registry v2 |
+| Containers | `containers` | `container`, `ctr`, `docker`, `podman` | Local Docker and Podman engines |
 | Tickets | `tickets` | `ticket`, `issue` | Network calls only when requested |
 | Shortcuts | `shortcuts` | `link`, `links` | Configured browser links |
 
@@ -411,6 +428,42 @@ packages:
 `username_env` / `token_env` enable bearer-token auth for private registries.
 Tag fetching caches results; `search` never writes credentials to disk.
 
+## Containers
+
+`hop containers [terms...]` searches local Docker and Podman containers. The
+same command is available as `hop container`, `hop ctr`, `hop docker`, and
+`hop podman`; the last two restrict the engine automatically.
+
+```bash
+hop ctr                       # every container
+hop ctr --running
+hop ctr 'image:nginx' 'status:exited'
+hop docker --json             # Docker only
+hop ctr logs deploy-api-1 -f -n 100
+hop ctr shell deploy-api-1
+hop ctr inspect deploy-api-1
+hop ctr stats deploy-api-1
+```
+
+Filters include `name:`, `image:`, `status:`, `label:`, `owner:` (Compose
+project), and `env:` (engine). When a name exists in both engines, pass
+`--engine docker` or `--engine podman` to actions. Containers are also a cockpit
+source, so `hop all ctr api` groups them with the other results. There is no
+dedicated container page in the web UI yet.
+
+```yaml
+containers:
+  timeout: 10s
+  cache_ttl: 15s
+  engines: []        # empty = auto-detect docker and podman
+#  engines:
+#    - name: docker
+#      type: docker
+#    - name: podman
+#      type: podman
+#      command: podman
+```
+
 ## Time ranges
 
 Time tokens restrict Grafana / Loki / Mimir links and log commands. They can
@@ -455,15 +508,32 @@ treat it as a flag: `hop` normalizes it to `last:2h` before parsing.
 | `/` or `i` | Edit the query |
 | `Enter` or `o` | Open the pod page in the web UI |
 | `s` | Open k9s on the pod |
-| `l` | Follow logs from the start of the range |
+| `e` | Open a shell in the first container (`kubectl exec -it`) |
+| `l` | Open the in-app logs pane (tail, timestamps, error highlighting) |
+| `L` | Follow logs full-screen (`kubectl logs -f`) |
+| `m` | Open the live metrics view (CPU, RAM, network, disk) |
 | `d` | Paged `kubectl describe pod` |
 | `y` | Copy the `kubectl get` command |
 | `r` | Refresh all clusters |
 | `?` | Help |
 | `q` | Quit |
 
-The preview panel shows the pod, then node details: IP, OS, kernel, runtime,
-kubelet, CPU/memory/pods, conditions, and taints.
+The preview panel shows health signals, pod limits/requests, live CPU/RAM bars,
+pod network rates, ephemeral disk, then node details: IP, OS, kernel, runtime,
+kubelet, node usage, conditions, and taints. Problem states (CrashLoopBackOff,
+ImagePullBackOff, OOMKilled, Failed/Pending, high restarts, NotReady nodes) use
+colored icons and an explicit alert banner.
+
+The logs and metrics panes stay inside the TUI. The interactive shell is
+launched full-screen because it needs the real terminal (same as `kubectl exec
+-it`); `esc`/`q` after leaving the shell returns to the pod list.
+
+Metrics are best effort:
+- CPU/RAM come from metrics-server;
+- network/disk and per-container usage come from the kubelet summary API
+  (`nodes/proxy`), which may be blocked by RBAC;
+- if a source is unavailable, the UI shows it explicitly instead of inventing
+  data.
 
 ## Web UI
 
@@ -481,8 +551,8 @@ The web UI has three clear entry points:
 - `/` is the Kubernetes dashboard: pod readiness, restarts, CPU and memory from
   metrics-server, grouping by environment/application/cluster/namespace,
   per-group health, node capacity, and a triage list;
-- `/servers` is the server dashboard: inventory, HTTP/SSH checks, memory, disk,
-  failed units, and a local filter;
+- `/servers` is the server dashboard: inventory, HTTP/SSH checks, ping/TCP
+  network probes, CPU load, memory, disk, failed units, and a local filter;
 - `/search` is the unified search across pods, VMs, repositories, packages,
   tickets, and shortcuts.
 
@@ -501,12 +571,17 @@ The UI also exposes:
 - `/api/unified` for grouped cockpit sections and live polling;
 - `/api/search` for pod results;
 - `/api/pod` for the full pod page;
+- `/api/pod/stats` for live pod/node CPU, memory, network and disk usage;
+- `/api/pod/logs` for a 500-line log tail across containers;
 - `/api/contexts` and `/api/stats`.
 
-The pod page includes a topology graph (Ingress → Service → EndpointSlice →
-Pod, owner chain, PVC, Node), containers, conditions, events, volumes, labels,
-annotations, YAML, observability links, kubectl commands, and a detailed node
-card. Click any topology node for facts and a copyable `kubectl` command.
+The pod page is split into Overview, Topology, Runtime, Logs, and Manifest tabs,
+with observability links, kubectl commands, volumes, owner chain, and selectors
+in the side rail. Overview includes a live usage card (CPU, memory, network,
+disk, containers, node pressure) refreshed every 10 seconds. The Logs tab loads
+a tail on demand and supports manual reload. The topology tab expands to full
+width and shows the graph (Ingress → Service → EndpointSlice → Pod, owner chain,
+PVC, Node); click any node for facts and a copyable `kubectl` command.
 
 ## Commands
 
@@ -515,9 +590,14 @@ card. Click any topology node for facts and a copyable `kubectl` command.
 | `hop all [terms...]` | Unified cockpit TUI, aliases `cockpit`, `everything` |
 | `hop git [terms...]` | Search local Git repos, aliases `repos`, `repo` |
 | `hop pkg [terms...]` | Search container images, aliases `packages`, `registry` |
+| `hop containers [terms...]` | Search Docker/Podman, aliases `container`, `ctr`, `docker`, `podman` |
+| `hop ctr logs NAME` | Show logs, `-f` follow, `-n` lines |
+| `hop ctr shell NAME [cmd...]` | Open a shell or exec a command |
+| `hop ctr inspect NAME` | Raw inspect JSON |
+| `hop ctr stats NAME` | Live resource usage |
 | `hop pod [terms...]` | Search pods, alias `pods`; TUI in a terminal |
 | `hop vm [tags...]` | Search VMs, TUI in a terminal; aliases `servers`, `vms` |
-| `hop link [keywords...]` | Open a configured browser shortcut, alias `links` |
+| `hop link [keywords...]` | Open a browser shortcut; TUI with no terms, alias `links` |
 | `hop issue [key\|terms...]` | Open, search or create tickets |
 | `hop issue new [title...]` | Create a ticket, optional `--from-pod` / `--from-vm` |
 | `hop issue providers` | List configured issue providers |
@@ -555,6 +635,7 @@ Main flags:
 | `--namespace` | Restrict to a namespace, repeatable |
 | `--env` | Restrict to an environment |
 | `--limit` | Maximum number of results |
+| `--min-score` | Minimum relevance score 0-1 (overrides `search.min_score`) |
 | `--concurrency` | Number of clusters queried in parallel |
 | `--timeout` | Per-cluster request timeout |
 | `--refresh` | Ignore the cache and refresh |
@@ -606,6 +687,8 @@ kube:
   namespaces: []
   exclude_namespaces: []   # e.g. ["kube-system"]
   resolve_owners: false
+  max_pods: 10000            # global cap kept in memory / returned; 0 = unlimited
+  max_pods_per_context: 1000 # per-cluster cap while listing; 0 = unlimited
 
 ui:
   bind: 127.0.0.1
@@ -635,9 +718,17 @@ providers:
     defaults:
       project: OPS
       issue_type: Task
+  gitlab:
+    type: gitlab
+    base_url: "https://gitlab.example.com"
+    token_env: GITLAB_TOKEN
+    auth_scheme: private-token
+    keywords: [gitlab, ticket, bug]
+    defaults:
+      project: group/project
 
 search:
-  min_score: 0.35
+  min_score: 0.5   # hide weak matches; override with --min-score
   limit: 50
   live_limit: 200
 
@@ -656,11 +747,21 @@ packages:
     - {name: ghcr, host: ghcr.io, type: ghcr}
     - {name: gitlab, host: registry.gitlab.com, type: gitlab}
 
+containers:
+  timeout: 10s
+  cache_ttl: 15s
+  engines: []   # auto-detect docker and podman
+
 plugins: []     # external command sources
 ```
 
 `resolve_owners` makes extra calls to resolve ReplicaSet → Deployment. Leave it
 at `false` if you have many clusters.
+
+`max_pods` / `max_pods_per_context` cap how many pods are fetched and kept in
+memory. With very large fleets (for example 50 EKS clusters / hundreds of
+thousands of pods), keep these low; the web UI shows a warning and the estimated
+total when the list is truncated. Set either to `0` to disable the cap.
 
 ### Workspaces
 
@@ -746,6 +847,10 @@ hop jira OPS-123
 hop jira search "checkout timeout"
 hop jira new "Pod api crashloop"
 hop jira                        # recent tickets
+
+hop gitlab 42 --print           # GitLab issue !42
+hop gitlab "checkout timeout"
+hop gitlab new "Container logs missing"
 ```
 
 Jira configuration:
@@ -771,20 +876,46 @@ export JIRA_USER="me@example.com"
 export JIRA_TOKEN="..."
 ```
 
+GitLab configuration:
+
+```yaml
+providers:
+  gitlab:
+    type: gitlab
+    base_url: "https://gitlab.example.com"
+    token_env: GITLAB_TOKEN
+    auth_scheme: private-token   # private-token or bearer
+    keywords: [gitlab, ticket, bug]
+    defaults:
+      project: group/project
+```
+
+```bash
+export GITLAB_TOKEN="..."
+```
+
+GitLab keys accept `42`, `#42`, `group/project#42`, and issue URLs such as
+`https://gitlab.example.com/group/project/-/issues/42`. Use `--print` on a
+provider alias to print the URL instead of opening the browser.
+
 Tokens are read from the environment, never from the hop config. Jira uses the
-REST API v2 (`/rest/api/2`). Opening a ticket only needs the base URL; search and
-create need the API token. Adding another provider means implementing
-`internal/providers.TicketProvider`, registering a factory, and adding its
-config block. The CLI, TUI, and web UI stay unchanged.
+REST API v2 (`/rest/api/2`); GitLab uses REST API v4 (`/api/v4`). Opening a
+ticket only needs the base URL; search and create need the API token. Adding
+another provider means implementing `internal/providers.TicketProvider`,
+registering a factory, and adding its config block. The CLI, TUI, and web UI
+stay unchanged.
 
 ## Browser shortcuts
 
 `hop link` opens a configured URL by keyword. It is separate from the pod
-observability links: shortcuts are global browser bookmarks.
+observability links: shortcuts are global browser bookmarks. In a terminal,
+running `hop link` without terms opens an interactive list; `hop link --tui
+ticket` opens it pre-filtered.
 
 ```bash
-hop link grafana
-hop link ticket
+hop link                 # interactive shortcut list
+hop link --tui ticket    # interactive list filtered by "ticket"
+hop link grafana         # open the best match directly
 hop link --list
 hop link --print jira
 hop config shortcut add swagger https://api.example.com/swagger api openapi
@@ -792,6 +923,10 @@ hop config shortcut add jira https://jira.example.com --keywords jira,ticket,bug
 hop config shortcut list
 hop config shortcut remove jira
 ```
+
+Links TUI keys: `↑↓`/`j k` move, `/` filter, `enter`/`o` open, `y` copy the
+URL, `e` edit, `a` add, `d` delete (then `y` to confirm), `r` reload, `?`
+help, `q` quit.
 
 ```yaml
 shortcuts:
@@ -809,8 +944,9 @@ shortcuts:
 
 Matching uses the shortcut name, keywords, description, and URL. All arguments
 must match. The best match is opened with the default browser; use `--print`
-for the URL, `--json` for machine output, or `--list` to inspect candidates.
-Shortcuts also appear in the unified web UI for one-click access.
+for the URL, `--json` for machine output, `--list` to inspect candidates, or
+`--tui` to force the interactive list. Shortcuts also appear in the unified web
+UI for one-click access.
 
 ## Cache
 
@@ -832,8 +968,9 @@ internal/search       tag and time parsing, fuzzy engine
 internal/app          snapshots, cache, ranking, orchestration
 internal/dashboard    Kubernetes overview, metrics, grouping, server checks
 internal/tui          Bubble Tea
-internal/servers      SSH config, VM inventory, tag search, HTTP/SSH checks
-internal/providers    ticket provider interfaces, registry, Jira adapter
+internal/servers      SSH config, VM inventory, tag search, HTTP/network/SSH checks
+internal/providers    ticket provider interfaces, registry, Jira/GitLab adapters
+internal/containers   Docker/Podman inventory, ranking and actions
 internal/web          HTTP server, templates, assets
 internal/actions      kubectl, k9s, logs, browser, clipboard
 internal/cache        on-disk cache
@@ -854,11 +991,13 @@ go build ./...
 Targeted tests:
 
 ```bash
-go test ./internal/search   # time and filter parsing
-go test ./internal/kube     # nodes and pod detail
-go test ./internal/web      # handlers and templates
-go test ./internal/tui      # TUI rendering
-go test ./internal/config   # config and links
+go test ./internal/search    # time and filter parsing
+go test ./internal/kube      # nodes and pod detail
+go test ./internal/web       # handlers and templates
+go test ./internal/tui       # TUI rendering
+go test ./internal/config    # config and links
+go test ./internal/containers
+go test ./internal/providers/...
 ```
 
 Build with version metadata:
@@ -871,6 +1010,35 @@ go build -ldflags "-X github.com/SlimaineB/hop/internal/version.Version=v0.1.0" 
 `Commit` and `Date` are also available via `-X` if you want to automate the
 version in CI.
 
+## Local lab
+
+`lab/` starts a lightweight local stack for trying tickets, SSH, and containers
+without external services:
+
+- Jira mock on `127.0.0.1:8081`;
+- GitLab mock on `127.0.0.1:8082`;
+- OpenSSH server on `127.0.0.1:2222` (key-only user `hop`).
+
+```bash
+./lab/up.sh
+source lab/env.sh
+
+hop issue LAB-1 --print
+hop issue new "Lab issue" --print
+hop gitlab "checkout"
+hop gitlab 1 --print
+hop ssh lab-ssh uptime
+hop server lab-ssh --check
+hop ctr --running
+
+./lab/down.sh
+```
+
+`up.sh` builds the images, generates `lab/keys/id_ed25519` and creates
+`lab/ssh_config`, `lab/hop.yaml`, and `lab/env.sh`. Generated files and keys are
+ignored by Git. Mock state is in memory and resets when the containers restart.
+The lab tokens are fake (`JIRA_TOKEN` and `GITLAB_TOKEN` are set to `lab-token`).
+
 ## Limitations
 
 - Pod search covers pods only; VM search covers SSH/config inventory only.
@@ -879,8 +1047,10 @@ version in CI.
 - Node details depend on `get node` RBAC permissions.
 - `k9s` must be installed separately; `ssh` must be installed for VM actions.
 - The web server is intended for local use.
-- Jira support uses REST API v2 and needs network access plus a token for
-  search/create. Other providers are not bundled yet.
+- Jira support uses REST API v2 and GitLab uses v4; both need network access
+  plus a token for search/create. Other ticket providers are not bundled yet.
+- Container actions are CLI/cockpit only for now; there is no dedicated
+  container page in the web UI.
 - The example links and browser shortcuts point to `example.com`: adapt them to
   your Grafana / Loki / Mimir / Jira setup.
 - `k8s.io/client-go` is pinned to `v0.35.10` to stay compatible with Go 1.25.

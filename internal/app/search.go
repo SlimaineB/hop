@@ -29,13 +29,15 @@ type HitView struct {
 }
 
 type Meta struct {
-	FetchedAt     time.Time           `json:"fetched_at"`
-	FetchDuration time.Duration       `json:"fetch_duration"`
-	FromCache     bool                `json:"from_cache"`
-	CacheAge      time.Duration       `json:"cache_age"`
-	Contexts      []kube.Context      `json:"contexts"`
-	Errors        []kube.ContextError `json:"errors,omitempty"`
-	TotalPods     int                 `json:"total_pods"`
+	FetchedAt      time.Time           `json:"fetched_at"`
+	FetchDuration  time.Duration       `json:"fetch_duration"`
+	FromCache      bool                `json:"from_cache"`
+	CacheAge       time.Duration       `json:"cache_age"`
+	Contexts       []kube.Context      `json:"contexts"`
+	Errors         []kube.ContextError `json:"errors,omitempty"`
+	TotalPods      int                 `json:"total_pods"`
+	Truncated      bool                `json:"truncated,omitempty"`
+	EstimatedTotal int64               `json:"estimated_total,omitempty"`
 }
 
 type SearchResult struct {
@@ -95,7 +97,7 @@ func (s *Service) rank(snap *Snapshot, req SearchRequest, start time.Time) *Sear
 	if limit <= 0 {
 		limit = s.cfg.Search.Limit
 	}
-	hits := s.engine.Rank(query, filtered, limit)
+	hits := s.engine.RankMin(query, filtered, limit, s.cfg.Search.MinScore)
 
 	views := make([]HitView, 0, len(hits))
 	for _, hit := range hits {
@@ -113,13 +115,15 @@ func (s *Service) rank(snap *Snapshot, req SearchRequest, start time.Time) *Sear
 	meta := Meta{TotalPods: len(snap.Pods)}
 	if snap != nil {
 		meta = Meta{
-			FetchedAt:     snap.FetchedAt,
-			FetchDuration: snap.Duration,
-			FromCache:     snap.FromCache,
-			CacheAge:      snap.CacheAge,
-			Contexts:      snap.Contexts,
-			Errors:        snap.Errors,
-			TotalPods:     len(snap.Pods),
+			FetchedAt:      snap.FetchedAt,
+			FetchDuration:  snap.Duration,
+			FromCache:      snap.FromCache,
+			CacheAge:       snap.CacheAge,
+			Contexts:       snap.Contexts,
+			Errors:         snap.Errors,
+			TotalPods:      len(snap.Pods),
+			Truncated:      snap.Truncated,
+			EstimatedTotal: snap.EstimatedTotal,
 		}
 	}
 

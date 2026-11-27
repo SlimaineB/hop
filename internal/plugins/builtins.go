@@ -11,6 +11,7 @@ import (
 
 	"github.com/SlimaineB/hop/internal/app"
 	"github.com/SlimaineB/hop/internal/config"
+	"github.com/SlimaineB/hop/internal/containers"
 	"github.com/SlimaineB/hop/internal/kube"
 	"github.com/SlimaineB/hop/internal/plugin"
 	"github.com/SlimaineB/hop/internal/providers"
@@ -29,6 +30,7 @@ type PodSearcher interface {
 type Deps struct {
 	Pods             PodSearcher
 	Servers          *servers.Service
+	Containers       *containers.Service
 	Repos            *repos.Service
 	Registry         *registry.Service
 	Providers        *providers.Set
@@ -56,12 +58,15 @@ func Build(cfg *config.Config, deps Deps) *plugin.Registry {
 }
 
 func Builtins(deps Deps) []plugin.Source {
-	sources := make([]plugin.Source, 0, 6)
+	sources := make([]plugin.Source, 0, 7)
 	if deps.Pods != nil {
 		sources = append(sources, &podSource{pods: deps.Pods, onImages: deps.OnImagesDetected})
 	}
 	if deps.Servers != nil {
 		sources = append(sources, &serverSource{servers: deps.Servers})
+	}
+	if deps.Containers != nil && deps.Containers.Enabled() {
+		sources = append(sources, &containerSource{containers: deps.Containers})
 	}
 	if deps.Repos != nil && deps.Repos.Enabled() {
 		sources = append(sources, &repoSource{repos: deps.Repos})
@@ -248,6 +253,85 @@ func (s *serverSource) search(query plugin.Query, local bool) (plugin.Result, er
 		})
 	}
 	return plugin.Result{ID: s.ID(), Title: s.Title(), Kind: s.Kind(), Items: items, Total: len(items)}, nil
+}
+
+type containerSource struct {
+	containers *containers.Service
+}
+
+func (s *containerSource) ID() string    { return "containers" }
+func (s *containerSource) Title() string { return "Containers" }
+func (s *containerSource) Kind() string  { return "containers" }
+func (s *containerSource) Selectors() []string {
+	return []string{"container", "containers", "ctr", "docker", "podman"}
+}
+
+func (s *containerSource) Search(ctx context.Context, query plugin.Query) (plugin.Result, error) {
+	return s.search(ctx, query, false)
+}
+
+func (s *containerSource) SearchLocal(query plugin.Query) (plugin.Result, error) {
+	return s.search(context.Background(), query, true)
+}
+
+func (s *containerSource) search(ctx context.Context, query plugin.Query, local bool) (plugin.Result, error) {
+	raw := plugin.StripSelectors(query.Raw, s.Selectors()...)
+	var hits []containers.Hit
+	var warnings []string
+	var err error
+	if local {
+		hits, warnings, err = s.containers.SearchLocal(raw, query.Limit)
+	} else {
+		hits, warnings, err = s.containers.Search(ctx, raw, query.Limit)
+	}
+	if err != nil {
+		return plugin.Result{}, err
+	}
+	items := make([]plugin.Item, 0, len(hits))
+	for _, hit := range hits {
+		item := hit.Container
+		command := []string{"exec", "-it", item.ID, "sh"}
+		if !strings.EqualFold(item.State, "running") {
+			command = []string{"logs", "--tail", "100", item.ID}
+		}
+		subtitle := item.Engine
+		if item.Image != "" {
+			subtitle += " · " + item.Image
+		}
+		description := item.Status
+		if item.Project != "" || item.Service != "" {
+			description = strings.Trim(strings.Join([]string{item.Project, item.Service}, " · "), " ·")
+		}
+		items = append(items, plugin.Item{
+			ID:          item.Engine + ":" + item.ID,
+			Title:       item.Name,
+			Subtitle:    subtitle,
+			Description: description,
+			Badge:       item.State,
+			Score:       int(hit.Score * 100),
+			Percent:     hit.Percent,
+			Copy:        s.containers.CommandLine(item, command...),
+			Meta: map[string]string{
+				"engine":  item.Engine,
+				"image":   item.Image,
+				"state":   item.State,
+				"status":  item.Status,
+				"ports":   item.Ports,
+				"project": item.Project,
+				"service": item.Service,
+				"id":      item.ID,
+			},
+			Payload: hit,
+		})
+	}
+	return plugin.Result{
+		ID:     s.ID(),
+		Title:  s.Title(),
+		Kind:   s.Kind(),
+		Items:  items,
+		Total:  len(items),
+		Errors: warnings,
+	}, nil
 }
 
 type repoSource struct {

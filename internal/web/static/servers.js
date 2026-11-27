@@ -37,6 +37,17 @@
     return pct(server.disk_used, server.disk_total);
   }
 
+  function loadFirst(server) {
+    return String(server.load || "").trim().split(/\s+/).filter(Boolean)[0] || "";
+  }
+
+  function loadPct(server) {
+    const value = Number(loadFirst(server));
+    const cpus = Number(server.cpus || 0);
+    if (!Number.isFinite(value) || cpus <= 0) return 0;
+    return Math.max(0, Math.min(100, Math.round((value / cpus) * 100)));
+  }
+
   function tone(value) {
     if (value >= 90) return "err";
     if (value >= 75) return "warn";
@@ -62,7 +73,21 @@
       const cls = value ? "ok" : configured === false ? "" : "err";
       return '<span class="check ' + cls + '">' + name + "</span>";
     }
-    return check("metrics", server.metrics_ok, Boolean(server.metrics_url)) +
+    let out = "";
+    if (server.checked && server.network_checked) {
+      const ping = server.ping_ok ? (server.ping_ms || 1) + "ms" : (server.network_reachable ? "tcp" : "net down");
+      const title = server.ping_ok
+        ? "ICMP " + (server.ping_ms || 1) + "ms"
+        : (server.network_error || (server.network_reachable ? "ICMP blocked, TCP reachable" : "network unreachable"));
+      out += '<span class="check ' + (server.network_reachable ? "ok" : "err") + '" title="' + h(title) + '">' + h(ping) + "</span>";
+      (server.ports || []).slice(0, 4).forEach(function (port) {
+        const state = port.open ? "open" : (port.state || "closed");
+        const cls = port.open ? "ok" : port.state === "filtered" ? "warn" : "err";
+        out += '<span class="check ' + cls + '" title="port ' + port.port + " " + h(state) + '">' + port.port + "</span>";
+      });
+    }
+    return out +
+      check("metrics", server.metrics_ok, Boolean(server.metrics_url)) +
       check("health", server.health_ok, Boolean(server.health_url)) +
       check("ssh", server.machine_ok, server.ssh_checks !== false);
   }
@@ -102,21 +127,28 @@
       return;
     }
     const head = '<div class="server-table-head" role="row">' +
-      "<span>Server</span><span>Status</span><span>Env</span><span>Host</span><span>Memory</span><span>Disk</span><span>Checks</span><span></span>" +
+      "<span>Server</span><span>Status</span><span>Env</span><span>Load</span><span>Memory</span><span>Disk</span><span>Checks</span><span></span>" +
       "</div>";
     grid.innerHTML = head + filtered.map(function (server) {
       const status = server.status || "unknown";
       const mem = pct(server.memory_used, server.memory_total);
       const disk = diskPct(server);
-      const host = server.user ? server.user + "@" + (server.host || server.name) : (server.host || "—");
-      const sub = server.failed_units && server.failed_units.length
-        ? server.failed_units.length + " failed unit" + (server.failed_units.length > 1 ? "s" : "")
-        : (server.source || "inventory");
-      return '<a class="server-row ' + status + '" href="/server?name=' + encodeURIComponent(server.name) + '" role="row">' +
+      const load = loadFirst(server);
+      const loadTone = loadPct(server);
+      const host = server.user ? server.user + "@" + (server.host || server.name) : (server.host || "");
+      const flags = [];
+      if (server.failed_units && server.failed_units.length) {
+        flags.push(server.failed_units.length + " failed unit" + (server.failed_units.length > 1 ? "s" : ""));
+      }
+      if (server.error) flags.push("check error");
+      if (!flags.length) flags.push(server.source || "inventory");
+      const sub = flags.join(" · ") + (host ? " · " + host : "");
+      const loadSub = (server.cpus ? server.cpus + " CPUs" : "no data") + (server.uptime ? " · " + server.uptime : "");
+      return '<a class="server-row ' + status + '" href="/server?name=' + encodeURIComponent(server.name) + '" role="row" title="' + h([server.os, server.uptime].filter(Boolean).join(" · ")) + '">' +
         '<span class="server-row-name"><i class="server-status ' + status + '"></i><span><b>' + h(server.name) + "</b><small>" + h(sub) + "</small></span></span>" +
         '<span><span class="status-pill ' + status + '">' + statusLabel(status) + "</span></span>" +
-        '<span><span class="badge">' + h(server.env || "—") + "</span></span>" +
-        '<span class="server-host mono">' + h(host) + "</span>" +
+        '<span class="server-env"><span class="badge">' + h(server.env || "—") + "</span></span>" +
+        '<span class="server-metric server-load"><b>' + h(load || "—") + "</b><small>" + h(loadSub) + "</small>" + (server.cpus && load ? '<i class="' + tone(loadTone) + '" style="width:' + Math.max(2, loadTone) + '%"></i>' : "") + "</span>" +
         '<span class="server-metric"><b>' + (server.memory_total ? mem + "%" : "—") + "</b><small>" + (server.memory_total ? fmtBytes(server.memory_used) + " / " + fmtBytes(server.memory_total) : "no data") + "</small>" + (server.memory_total ? '<i class="' + tone(mem) + '" style="width:' + Math.max(2, mem) + '%"></i>' : "") + "</span>" +
         '<span class="server-metric"><b>' + (server.disk_total || server.disk_percent ? disk + "%" : "—") + "</b><small>" + (server.disk_total ? fmtBytes(server.disk_used) + " / " + fmtBytes(server.disk_total) : "no data") + "</small>" + (server.disk_total || server.disk_percent ? '<i class="' + tone(disk) + '" style="width:' + Math.max(2, disk) + '%"></i>' : "") + "</span>" +
         '<span class="server-checks">' + checks(server) + "</span>" +

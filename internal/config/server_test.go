@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestUpsertAndRemoveServer(t *testing.T) {
@@ -19,6 +20,7 @@ func TestUpsertAndRemoveServer(t *testing.T) {
 		Env:        "prod",
 		Tags:       []string{"api", "prod"},
 		MetricsURL: "http://10.0.0.10:9100/metrics",
+		CheckPorts: []int{443, 5432},
 	}
 	if _, err := UpsertServer(path, entry); err != nil {
 		t.Fatal(err)
@@ -36,6 +38,9 @@ func TestUpsertAndRemoveServer(t *testing.T) {
 	}
 	if len(got.Tags) != 2 || got.Tags[0] != "api" || got.Tags[1] != "prod" {
 		t.Fatalf("tags = %v", got.Tags)
+	}
+	if len(got.CheckPorts) != 2 || got.CheckPorts[0] != 443 || got.CheckPorts[1] != 5432 {
+		t.Fatalf("check ports = %v", got.CheckPorts)
 	}
 
 	entry.Tags = []string{"web", "prod"}
@@ -62,6 +67,16 @@ func TestUpsertAndRemoveServer(t *testing.T) {
 	}
 	if len(cfg.Servers) != 0 {
 		t.Fatalf("servers after remove = %d, want 0", len(cfg.Servers))
+	}
+}
+
+func TestNormalizeServerCheckPorts(t *testing.T) {
+	cfg := Default()
+	cfg.Servers = []ServerConfig{{Name: "web01", Host: "10.0.0.10", CheckPorts: []int{443, 22, 443, 70000, 0}}}
+	cfg.Normalize()
+	ports := cfg.Servers[0].CheckPorts
+	if len(ports) != 2 || ports[0] != 443 || ports[1] != 22 {
+		t.Fatalf("check ports = %v", ports)
 	}
 }
 
@@ -150,5 +165,44 @@ func TestNormalizeProviders(t *testing.T) {
 	}
 	if len(provider.Keywords) != 3 || cfg.Issues.DefaultProvider != "jira-prod" {
 		t.Fatalf("provider = %+v, default = %s", provider, cfg.Issues.DefaultProvider)
+	}
+}
+
+func TestKubePodCapsDefaultsAndDisable(t *testing.T) {
+	cfg := Default()
+	cfg.Normalize()
+	if cfg.Kube.MaxPods != 10000 || cfg.Kube.MaxPodsPerContext != 1000 {
+		t.Fatalf("defaults = %d/%d, want 10000/1000", cfg.Kube.MaxPods, cfg.Kube.MaxPodsPerContext)
+	}
+	cfg.Kube.MaxPods = 0
+	cfg.Kube.MaxPodsPerContext = -1
+	cfg.Normalize()
+	if cfg.Kube.MaxPods != 0 || cfg.Kube.MaxPodsPerContext != 0 {
+		t.Fatalf("disabled caps = %d/%d, want 0/0", cfg.Kube.MaxPods, cfg.Kube.MaxPodsPerContext)
+	}
+}
+
+func TestNormalizeContainers(t *testing.T) {
+	cfg := Default()
+	cfg.Containers.Engines = []ContainerEngineConfig{
+		{Name: " Docker ", Type: "", Command: ""},
+		{Name: "", Type: "PODMAN", Command: ""},
+		{Name: "docker", Type: "docker"},
+		{Name: "custom", Type: "", Command: ""},
+	}
+	cfg.Normalize()
+	if cfg.Containers.Timeout.Get() != 10*time.Second || cfg.Containers.CacheTTL.Get() != 15*time.Second {
+		t.Fatalf("timeouts = %s/%s", cfg.Containers.Timeout, cfg.Containers.CacheTTL)
+	}
+	if len(cfg.Containers.Engines) != 2 {
+		t.Fatalf("engines = %+v", cfg.Containers.Engines)
+	}
+	docker := cfg.Containers.Engines[0]
+	if docker.Name != "docker" || docker.Type != "docker" || docker.Command != "docker" {
+		t.Fatalf("docker engine = %+v", docker)
+	}
+	podman := cfg.Containers.Engines[1]
+	if podman.Name != "podman" || podman.Type != "podman" || podman.Command != "podman" {
+		t.Fatalf("podman engine = %+v", podman)
 	}
 }

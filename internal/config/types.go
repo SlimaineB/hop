@@ -37,6 +37,7 @@ type Config struct {
 	Workspaces []Workspace               `yaml:"workspaces"`
 	SSHConfig  string                    `yaml:"ssh_config,omitempty"`
 	Servers    []ServerConfig            `yaml:"servers,omitempty"`
+	Containers Containers                `yaml:"containers,omitempty"`
 	Shortcuts  []ShortcutConfig          `yaml:"shortcuts,omitempty"`
 	Issues     IssuesConfig              `yaml:"issues,omitempty"`
 	Providers  map[string]ProviderConfig `yaml:"providers,omitempty"`
@@ -111,18 +112,33 @@ type ShortcutConfig struct {
 	Description string   `yaml:"description,omitempty"`
 }
 
+type Containers struct {
+	Engines  []ContainerEngineConfig `yaml:"engines,omitempty"`
+	Timeout  Duration                `yaml:"timeout,omitempty"`
+	CacheTTL Duration                `yaml:"cache_ttl,omitempty"`
+}
+
+type ContainerEngineConfig struct {
+	Name    string   `yaml:"name"`
+	Type    string   `yaml:"type,omitempty"`
+	Command string   `yaml:"command,omitempty"`
+	Args    []string `yaml:"args,omitempty"`
+}
+
 type ServerConfig struct {
-	Name       string   `yaml:"name"`
-	SSH        string   `yaml:"ssh,omitempty"`
-	Host       string   `yaml:"host,omitempty"`
-	User       string   `yaml:"user,omitempty"`
-	Port       int      `yaml:"port,omitempty"`
-	ProxyJump  string   `yaml:"proxy_jump,omitempty"`
-	Env        string   `yaml:"env,omitempty"`
-	Tags       []string `yaml:"tags,omitempty"`
-	MetricsURL string   `yaml:"metrics_url,omitempty"`
-	HealthURL  string   `yaml:"health_url,omitempty"`
-	SSHChecks  *bool    `yaml:"ssh_checks,omitempty"`
+	Name          string   `yaml:"name"`
+	SSH           string   `yaml:"ssh,omitempty"`
+	Host          string   `yaml:"host,omitempty"`
+	User          string   `yaml:"user,omitempty"`
+	Port          int      `yaml:"port,omitempty"`
+	ProxyJump     string   `yaml:"proxy_jump,omitempty"`
+	Env           string   `yaml:"env,omitempty"`
+	Tags          []string `yaml:"tags,omitempty"`
+	MetricsURL    string   `yaml:"metrics_url,omitempty"`
+	HealthURL     string   `yaml:"health_url,omitempty"`
+	SSHChecks     *bool    `yaml:"ssh_checks,omitempty"`
+	NetworkChecks *bool    `yaml:"network_checks,omitempty"`
+	CheckPorts    []int    `yaml:"check_ports,omitempty"`
 }
 
 type Kube struct {
@@ -136,6 +152,8 @@ type Kube struct {
 	Namespaces        []string `yaml:"namespaces"`
 	ExcludeNamespaces []string `yaml:"exclude_namespaces"`
 	ResolveOwners     bool     `yaml:"resolve_owners"`
+	MaxPods           int      `yaml:"max_pods,omitempty"`
+	MaxPodsPerContext int      `yaml:"max_pods_per_context,omitempty"`
 }
 
 func (k Kube) ListAllNamespaces() bool {

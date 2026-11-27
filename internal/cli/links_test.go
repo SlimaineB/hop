@@ -1,6 +1,10 @@
 package cli
 
 import (
+	"bytes"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/SlimaineB/hop/internal/config"
@@ -40,5 +44,23 @@ func TestValidShortcutURL(t *testing.T) {
 		if config.ValidShortcutURL(value) {
 			t.Fatalf("expected invalid: %s", value)
 		}
+	}
+}
+
+func TestLinkCommandListsShortcuts(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte("shortcuts:\n  - name: grafana\n    url: https://grafana.example.com\n    keywords: [metrics]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	app := &App{configPath: path}
+	cmd := app.newLinkCommand()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetArgs([]string{"--list"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if !strings.Contains(out.String(), "grafana") || !strings.Contains(out.String(), "https://grafana.example.com") {
+		t.Fatalf("output = %q", out.String())
 	}
 }

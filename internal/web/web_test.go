@@ -22,6 +22,7 @@ import (
 
 type fakeBackend struct {
 	detail *app.Detail
+	stats  *kube.PodStats
 	rng    *search.TimeRange
 	result *app.SearchResult
 }
@@ -46,6 +47,17 @@ func (f *fakeBackend) searchResult() *app.SearchResult {
 func (f *fakeBackend) Detail(_ context.Context, _ kube.PodRef, rng *search.TimeRange) (*app.Detail, error) {
 	f.rng = rng
 	return f.detail, nil
+}
+
+func (f *fakeBackend) PodStats(_ context.Context, ref kube.PodRef) (*kube.PodStats, error) {
+	if f.stats != nil {
+		return f.stats, nil
+	}
+	return &kube.PodStats{Context: ref.Context, Namespace: ref.Namespace, Name: ref.Name, Source: "kubelet"}, nil
+}
+
+func (f *fakeBackend) PodLogs(context.Context, kube.PodRef, *search.TimeRange) (string, error) {
+	return "2026-11-27T10:00:00Z [api] INFO started\n2026-11-27T10:00:01Z [api] ERROR boom\n", nil
 }
 
 func (f *fakeBackend) Stats() app.Stats { return app.Stats{} }
@@ -91,13 +103,69 @@ func TestTemplatesRender(t *testing.T) {
 		t.Fatalf("pod status = %d, body=%s", response.Code, response.Body.String())
 	}
 	body := response.Body.String()
-	for _, needle := range []string{"api-123", "node-1", "10.0.1.2", "Logs/metrics range", "kubectl", "Topology", "topology-data", "Ingress"} {
+	for _, needle := range []string{"api-123", "node-1", "10.0.1.2", "Logs/metrics range", "kubectl", "Topology", "topology-data", "Ingress", "data-tabs", `role="tab"`, "panel-overview", "panel-topology", "Live usage", "data-live-metrics", "data-live-refresh", "panel-logs", "data-pod-logs"} {
 		if !strings.Contains(body, needle) {
 			t.Fatalf("pod body missing %q", needle)
 		}
 	}
 	if backend.rng == nil {
 		t.Fatalf("backend did not receive time range")
+	}
+}
+
+func TestPodStatsEndpoint(t *testing.T) {
+	backend := &fakeBackend{stats: &kube.PodStats{
+		Context: "prod-eu", Namespace: "apps", Name: "api-123",
+		Source: "kubelet", CPU: 750, Memory: 512 * 1024 * 1024,
+		Network: kube.NetworkStats{RxBytes: 1000, TxBytes: 2000},
+		Disk:    kube.DiskStats{UsedBytes: 10, CapacityBytes: 100},
+	}}
+	server, err := New(backend, Options{})
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+	values := url.Values{}
+	values.Set("context", "prod-eu")
+	values.Set("namespace", "apps")
+	values.Set("name", "api-123")
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/pod/stats?"+values.Encode(), nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", response.Code, response.Body.String())
+	}
+	var stats kube.PodStats
+	if err := json.NewDecoder(response.Body).Decode(&stats); err != nil {
+		t.Fatal(err)
+	}
+	if stats.Source != "kubelet" || stats.CPU != 750 || stats.Disk.CapacityBytes != 100 {
+		t.Fatalf("stats = %+v", stats)
+	}
+}
+
+func TestPodLogsEndpoint(t *testing.T) {
+	server, err := New(&fakeBackend{}, Options{})
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+	values := url.Values{}
+	values.Set("context", "prod-eu")
+	values.Set("namespace", "apps")
+	values.Set("name", "api-123")
+	values.Set("q", "12h 14h")
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/pod/logs?"+values.Encode(), nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", response.Code, response.Body.String())
+	}
+	var payload struct {
+		Logs  string `json:"logs"`
+		Range string `json:"range"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(payload.Logs, "ERROR boom") || payload.Range == "" {
+		t.Fatalf("payload = %+v", payload)
 	}
 }
 

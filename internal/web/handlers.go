@@ -277,6 +277,63 @@ func (s *Server) handleAPIPod(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, detail)
 }
 
+func (s *Server) handleAPIPodStats(w http.ResponseWriter, r *http.Request) {
+	if !onlyGET(w, r) {
+		return
+	}
+	if s.backend == nil {
+		writeError(w, http.StatusServiceUnavailable, errText("pod search unavailable"))
+		return
+	}
+	values := r.URL.Query()
+	ref := kube.PodRef{
+		Context:   values.Get("context"),
+		Namespace: values.Get("namespace"),
+		Name:      values.Get("name"),
+	}
+	if ref.Context == "" || ref.Namespace == "" || ref.Name == "" {
+		writeError(w, http.StatusBadRequest, errText("context, namespace and name are required"))
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	stats, err := s.backend.PodStats(ctx, ref)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, stats)
+}
+
+func (s *Server) handleAPIPodLogs(w http.ResponseWriter, r *http.Request) {
+	if !onlyGET(w, r) {
+		return
+	}
+	if s.backend == nil {
+		writeError(w, http.StatusServiceUnavailable, errText("pod search unavailable"))
+		return
+	}
+	values := r.URL.Query()
+	ref := kube.PodRef{
+		Context:   values.Get("context"),
+		Namespace: values.Get("namespace"),
+		Name:      values.Get("name"),
+	}
+	if ref.Context == "" || ref.Namespace == "" || ref.Name == "" {
+		writeError(w, http.StatusBadRequest, errText("context, namespace and name are required"))
+		return
+	}
+	query := search.Parse(values.Get("q"))
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	logs, err := s.backend.PodLogs(ctx, ref, query.TimeRange)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"logs": logs, "at": time.Now(), "range": rangeLabel(query.TimeRange)})
+}
+
 func (s *Server) handleAPIContexts(w http.ResponseWriter, r *http.Request) {
 	if !onlyGET(w, r) {
 		return

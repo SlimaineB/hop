@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/SlimaineB/hop/internal/actions"
 	"github.com/SlimaineB/hop/internal/app"
 	"github.com/SlimaineB/hop/internal/kube"
 	"github.com/SlimaineB/hop/internal/search"
@@ -53,6 +54,28 @@ type Model struct {
 	detailID      string
 	detailSeq     int
 
+	stats           *kube.PodStats
+	statsErr        error
+	statsLoading    bool
+	statsID         string
+	statsSeq        int
+	statsRxRate     float64
+	statsTxRate     float64
+	statsNodeRxRate float64
+	statsNodeTxRate float64
+
+	metricsMode   bool
+	metricsOffset int
+
+	logsMode    bool
+	logsLoading bool
+	logsErr     error
+	logsID      string
+	logsSeq     int
+	logsOffset  int
+	logs        string
+	logsAt      time.Time
+
 	searchSeq int
 	localSeq  int
 	editing   bool
@@ -71,6 +94,25 @@ type detailMsg struct {
 	id     string
 	detail *app.Detail
 	err    error
+}
+
+type statsMsg struct {
+	seq   int
+	id    string
+	stats *kube.PodStats
+	err   error
+}
+
+type statsTickMsg struct {
+	id string
+}
+
+type logsMsg struct {
+	seq     int
+	id      string
+	content string
+	err     error
+	at      time.Time
 }
 
 type statusMsg struct {
@@ -191,6 +233,118 @@ func (m *Model) loadDetail() tea.Cmd {
 	}
 }
 
+func (m *Model) loadStatsCmd() tea.Cmd {
+	hit, ok := m.selected()
+	if !ok || m.svc == nil {
+		m.stats = nil
+		m.statsErr = nil
+		m.statsLoading = false
+		m.statsID = ""
+		return nil
+	}
+	id := podKey(hit.Pod)
+	if m.statsID != id {
+		m.stats = nil
+		m.statsErr = nil
+		m.statsRxRate = 0
+		m.statsTxRate = 0
+		m.statsNodeRxRate = 0
+		m.statsNodeTxRate = 0
+	}
+	m.statsSeq++
+	seq := m.statsSeq
+	m.statsID = id
+	m.statsLoading = true
+	svc := m.svc
+	ref := hit.Pod.Ref()
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+		defer cancel()
+		stats, err := svc.PodStats(ctx, ref)
+		return statsMsg{seq: seq, id: id, stats: stats, err: err}
+	}
+}
+
+func (m *Model) applyStats(msg statsMsg) {
+	if msg.seq != m.statsSeq || msg.id != m.statsID {
+		return
+	}
+	m.statsLoading = false
+	if msg.err != nil {
+		m.statsErr = msg.err
+		return
+	}
+	m.statsErr = nil
+	if msg.stats == nil {
+		return
+	}
+	if m.stats != nil && m.statsID == msg.id && !m.stats.FetchedAt.IsZero() {
+		elapsed := msg.stats.FetchedAt.Sub(m.stats.FetchedAt).Seconds()
+		if elapsed > 0.1 {
+			m.statsRxRate = float64(deltaUint(msg.stats.Network.RxBytes, m.stats.Network.RxBytes)) / elapsed
+			m.statsTxRate = float64(deltaUint(msg.stats.Network.TxBytes, m.stats.Network.TxBytes)) / elapsed
+			if m.stats.Node != nil && msg.stats.Node != nil {
+				m.statsNodeRxRate = float64(deltaUint(msg.stats.Node.Network.RxBytes, m.stats.Node.Network.RxBytes)) / elapsed
+				m.statsNodeTxRate = float64(deltaUint(msg.stats.Node.Network.TxBytes, m.stats.Node.Network.TxBytes)) / elapsed
+			}
+		}
+	}
+	m.stats = msg.stats
+}
+
+func deltaUint(next, previous uint64) uint64 {
+	if next < previous {
+		return 0
+	}
+	return next - previous
+}
+
+func (m *Model) loadLogsCmd() tea.Cmd {
+	hit, ok := m.selected()
+	if !ok || m.svc == nil {
+		return nil
+	}
+	id := podKey(hit.Pod)
+	m.logsSeq++
+	seq := m.logsSeq
+	m.logsID = id
+	m.logsLoading = true
+	m.logsErr = nil
+	pod := hit.Pod
+	opts := m.svc.ActionOptionsFor(m.timeRange)
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		content, err := actions.TailLogs(ctx, pod, opts, 500)
+		return logsMsg{seq: seq, id: id, content: content, err: err, at: time.Now()}
+	}
+}
+
+func (m *Model) toggleLogs() tea.Cmd {
+	if m.logsMode {
+		m.logsMode = false
+		return nil
+	}
+	m.logsMode = true
+	m.metricsMode = false
+	m.logsOffset = 0
+	return m.loadLogsCmd()
+}
+
+func (m *Model) toggleMetrics() tea.Cmd {
+	if m.metricsMode {
+		m.metricsMode = false
+		return nil
+	}
+	m.metricsMode = true
+	m.logsMode = false
+	m.metricsOffset = 0
+	if !m.statsLoading {
+		return m.loadStatsCmd()
+	}
+	return nil
+}
+
 func (m *Model) applyResult(result *app.SearchResult) {
 	m.result = result
 	m.hits = result.Hits
@@ -267,7 +421,7 @@ func (m *Model) moveCursor(delta int) tea.Cmd {
 	}
 	m.cursor = next
 	m.ensureVisible()
-	return m.loadDetail()
+	return tea.Batch(m.loadDetail(), m.loadStatsCmd())
 }
 
 func (m *Model) startEditing() {
@@ -335,6 +489,24 @@ func (m Model) refreshCmd() tea.Cmd {
 
 func podKey(pod kube.Pod) string {
 	return pod.Context + "\x1f" + pod.Namespace + "\x1f" + pod.Name
+}
+
+func (m Model) logsVisibleRows() int {
+	height := max(20, m.height)
+	return max(3, height-6)
+}
+
+func (m Model) metricsMaxOffset() int {
+	width := max(60, m.width)
+	return max(0, len(m.metricsContent(width-4))-m.metricsBodyHeight())
+}
+
+func (m Model) logsLineCount() int {
+	content := strings.TrimRight(m.logs, "\n")
+	if content == "" {
+		return 0
+	}
+	return strings.Count(content, "\n") + 1
 }
 
 func rangeText(rng *search.TimeRange) string {

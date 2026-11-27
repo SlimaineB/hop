@@ -92,4 +92,22 @@ func TestAPIServersAndPage(t *testing.T) {
 			t.Fatalf("servers page missing %q", needle)
 		}
 	}
+
+	response, err = http.Get(httpServer.URL + "/server?name=app01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("server page status = %d", response.StatusCode)
+	}
+	body, err = io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, needle := range []string{"Machine", "SSH access", "Network", "ICMP ping", "TCP", "Checks", "server-summary", "server-check-list", "Inventory"} {
+		if !strings.Contains(string(body), needle) {
+			t.Fatalf("server page missing %q", needle)
+		}
+	}
 }

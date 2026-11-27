@@ -48,8 +48,39 @@ func TestServerViewHelp(t *testing.T) {
 	updated, _ := model.Update(tea.WindowSizeMsg{Width: 100, Height: 36})
 	updated, _ = updated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("?")})
 	view := updated.View()
-	if !strings.Contains(view, "VMs & servers") || !strings.Contains(view, "run metrics, health and SSH checks") {
+	if !strings.Contains(view, "VMs & servers") || !strings.Contains(view, "run HTTP, ping, TCP and SSH checks") {
 		t.Fatalf("help view incomplete: %q", view)
+	}
+}
+
+func TestServerCheckKeyStartsCheck(t *testing.T) {
+	model := testServerModel(t)
+	model.hits = []servers.Hit{{Server: servers.Server{Name: "web01"}}}
+	model.cursor = 0
+
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
+	if cmd == nil {
+		t.Fatal("expected a check command")
+	}
+	next := updated.(ServerModel)
+	if !next.checking || next.checkName != "web01" {
+		t.Fatalf("check did not start: checking=%v name=%q", next.checking, next.checkName)
+	}
+	if !strings.Contains(next.status, "running checks") {
+		t.Fatalf("missing progress status: %q", next.status)
+	}
+}
+
+func TestServerCheckKeyWithoutSelectionReportsStatus(t *testing.T) {
+	model := testServerModel(t)
+
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c")})
+	next := updated.(ServerModel)
+	if next.checking {
+		t.Fatal("check started without a selected server")
+	}
+	if next.status != "no server selected" {
+		t.Fatalf("status = %q", next.status)
 	}
 }
 

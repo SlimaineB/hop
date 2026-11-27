@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/url"
 	"os"
-	"path"
 	"regexp"
 	"sort"
 	"strconv"
@@ -26,7 +25,7 @@ import (
 	"github.com/SlimaineB/hop/internal/servers"
 )
 
-var ticketKeyPattern = regexp.MustCompile(`^[A-Z][A-Z0-9_]+-[0-9]+$`)
+var regexpTicketKey = regexp.MustCompile(`^[A-Z][A-Z0-9_]+-[0-9]+$`)
 
 func (a *App) newIssueCommand() *cobra.Command {
 	var printURL bool
@@ -205,26 +204,36 @@ func (a *App) runIssue(cmd *cobra.Command, cfg *config.Config, set *providers.Se
 		return cmd.Help()
 	}
 	if len(args) == 1 {
-		if key, ok := ticketKeyFromInput(args[0]); ok {
-			candidates := providerList(set, forced)
-			matches := detectProviders(candidates, key)
-			if forced != "" {
-				matches = candidates
-			}
-			if len(matches) > 0 {
-				provider, err := chooseProvider(cmd, matches, "open "+key)
-				if err != nil {
-					return err
+		candidates := providerList(set, forced)
+		matches := detectProviders(candidates, args[0])
+		if forced != "" {
+			matches = nil
+			for _, provider := range candidates {
+				if _, ok := normalizedTicketKey(provider, args[0]); ok {
+					matches = candidates
+					break
 				}
-				return a.openTicket(cmd, provider, key, printURL)
 			}
-			return fmt.Errorf("no configured provider recognizes ticket key %s", key)
+		}
+		if len(matches) > 0 {
+			provider, err := chooseProvider(cmd, matches, "open "+args[0])
+			if err != nil {
+				return err
+			}
+			key, ok := normalizedTicketKey(provider, args[0])
+			if !ok {
+				return fmt.Errorf("provider %s does not recognize ticket key %s", provider.ID(), args[0])
+			}
+			return a.openTicket(cmd, provider, key, printURL)
+		}
+		if ticketKeyLike(args[0]) {
+			return fmt.Errorf("no configured provider recognizes ticket key %s", args[0])
 		}
 	}
 	return a.searchTickets(cmd, providerList(set, forced), strings.Join(args, " "), 10)
 }
 
-func (a *App) runProviderAlias(cmd *cobra.Command, cfg *config.Config, id string, args []string) error {
+func (a *App) runProviderAlias(cmd *cobra.Command, cfg *config.Config, id string, args []string, printURL bool) error {
 	set, err := loadProviderSet(cfg)
 	if err != nil {
 		return err
@@ -249,30 +258,30 @@ func (a *App) runProviderAlias(cmd *cobra.Command, cfg *config.Config, id string
 		if len(args) != 2 {
 			return fmt.Errorf("usage: hop %s open KEY", id)
 		}
-		return a.openTicketInput(cmd, set, id, args[1], false)
+		return a.openTicketInput(cmd, set, id, args[1], printURL)
 	case "providers":
 		return printProviders(cmd, cfg)
 	default:
-		return a.runIssue(cmd, cfg, set, id, args, false)
+		return a.runIssue(cmd, cfg, set, id, args, printURL)
 	}
 }
 
 func (a *App) openTicketInput(cmd *cobra.Command, set *providers.Set, forced, input string, printURL bool) error {
-	key, ok := ticketKeyFromInput(input)
-	if !ok {
-		return fmt.Errorf("invalid ticket key: %s", input)
-	}
 	candidates := providerList(set, forced)
-	matches := detectProviders(candidates, key)
+	matches := detectProviders(candidates, input)
 	if forced != "" {
 		matches = candidates
 	}
 	if len(matches) == 0 {
-		return fmt.Errorf("no configured provider recognizes ticket key %s", key)
+		return fmt.Errorf("no configured provider recognizes ticket key %s", input)
 	}
-	provider, err := chooseProvider(cmd, matches, "open "+key)
+	provider, err := chooseProvider(cmd, matches, "open "+input)
 	if err != nil {
 		return err
+	}
+	key, ok := normalizedTicketKey(provider, input)
+	if !ok {
+		return fmt.Errorf("provider %s does not recognize ticket key %s", provider.ID(), input)
 	}
 	return a.openTicket(cmd, provider, key, printURL)
 }
@@ -376,14 +385,35 @@ func providerList(set *providers.Set, forced string) []providers.TicketProvider 
 	return set.All()
 }
 
-func detectProviders(list []providers.TicketProvider, key string) []providers.TicketProvider {
+func detectProviders(list []providers.TicketProvider, value string) []providers.TicketProvider {
 	var matches []providers.TicketProvider
 	for _, provider := range list {
-		if provider.IsKey(key) {
+		if _, ok := normalizedTicketKey(provider, value); ok {
 			matches = append(matches, provider)
 		}
 	}
 	return matches
+}
+
+func normalizedTicketKey(provider providers.TicketProvider, value string) (string, bool) {
+	if normalizer, ok := provider.(providers.KeyNormalizer); ok {
+		return normalizer.NormalizeKey(value)
+	}
+	if provider.IsKey(value) {
+		return strings.TrimSpace(value), true
+	}
+	return "", false
+}
+
+func ticketKeyLike(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return false
+	}
+	if strings.ContainsAny(value, "#") || regexpTicketKey.MatchString(value) {
+		return true
+	}
+	return strings.Contains(value, "/-/issues/") || strings.Contains(value, "/browse/")
 }
 
 func selectProvider(cmd *cobra.Command, set *providers.Set, defaultID, forced, action string) (providers.TicketProvider, error) {
@@ -477,28 +507,14 @@ func providerAlias(cfg *config.Config, args []string) (string, bool) {
 	if _, ok := cfg.Providers[name]; ok {
 		return name, true
 	}
-	return "", false
-}
-
-func ticketKeyFromInput(value string) (string, bool) {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return "", false
-	}
-	if parsed, err := url.Parse(value); err == nil && parsed.Scheme != "" && parsed.Host != "" {
-		last := path.Base(strings.TrimRight(parsed.Path, "/"))
-		if decoded, err := url.PathUnescape(last); err == nil {
-			last = decoded
+	var matches []string
+	for id, provider := range cfg.Providers {
+		if strings.EqualFold(strings.TrimSpace(provider.Type), name) {
+			matches = append(matches, id)
 		}
-		last = strings.ToUpper(strings.TrimSpace(last))
-		if ticketKeyPattern.MatchString(last) {
-			return last, true
-		}
-		return "", false
 	}
-	value = strings.ToUpper(value)
-	if ticketKeyPattern.MatchString(value) {
-		return value, true
+	if len(matches) == 1 {
+		return matches[0], true
 	}
 	return "", false
 }

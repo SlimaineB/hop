@@ -2,7 +2,7 @@
 {{template "head" .}}
 {{with .Server}}
 <nav class="breadcrumb" aria-label="Breadcrumb">
-  <a href="/servers?q={{urlquery $.BackQuery}}">← Search</a>
+  <a href="/servers?q={{urlquery $.BackQuery}}">← Servers</a>
   <span class="sep">/</span>
   <span>{{dash .Env}}</span>
   <span class="sep">/</span>
@@ -11,9 +11,9 @@
 
 <section class="pod-header">
   <div class="pod-title">
-    <div class="pod-status status-ok">
+    <div class="pod-status status-{{serverStatus $.Check}}">
       <span class="dot" aria-hidden="true"></span>
-      VM
+      {{serverStatusText $.Check}}
     </div>
     <h1>{{.Name}}</h1>
     <div class="pod-badges">
@@ -21,6 +21,7 @@
       <span class="badge">{{dash .Source}}</span>
       <span class="badge mono">{{.Host}}{{if .Port}}:{{.Port}}{{end}}</span>
       {{range .Tags}}<span class="badge">{{.}}</span>{{end}}
+      {{with $.Check}}<span class="badge">checked {{age .CheckedAt}}</span><span class="badge">net {{networkText .Network}}</span>{{end}}
     </div>
   </div>
   <div class="pod-quick">
@@ -30,39 +31,57 @@
   </div>
 </section>
 
+{{with $.Check}}
+<section class="live-grid server-summary" aria-label="Machine resources">
+  <article class="live-metric">
+    <span class="live-label">Load 1m</span>
+    <span class="live-value">{{loadFirst .Machine.Load}}</span>
+    <span class="live-sub">{{if .Machine.CPUs}}{{.Machine.CPUs}} CPUs{{else}}cpu unknown{{end}}{{if .Machine.Uptime}} · {{.Machine.Uptime}}{{end}}</span>
+    <span class="live-bar"><i class="{{tonePct (loadPercent .Machine.Load .Machine.CPUs)}}" style="width:{{barWidth (loadPercent .Machine.Load .Machine.CPUs)}}%"></i></span>
+  </article>
+  <article class="live-metric">
+    <span class="live-label">Memory</span>
+    <span class="live-value">{{if .Machine.MemoryTotal}}{{usagePercent .Machine.MemoryUsed .Machine.MemoryTotal}}%{{else}}—{{end}}</span>
+    <span class="live-sub">{{if .Machine.MemoryTotal}}{{fmtBytes .Machine.MemoryUsed}} / {{fmtBytes .Machine.MemoryTotal}}{{else}}no data{{end}}</span>
+    <span class="live-bar"><i class="{{tonePct (usagePercent .Machine.MemoryUsed .Machine.MemoryTotal)}}" style="width:{{barWidth (usagePercent .Machine.MemoryUsed .Machine.MemoryTotal)}}%"></i></span>
+  </article>
+  <article class="live-metric">
+    <span class="live-label">Disk /</span>
+    <span class="live-value">{{if .Machine.DiskTotal}}{{usagePercent .Machine.DiskUsed .Machine.DiskTotal}}%{{else}}—{{end}}</span>
+    <span class="live-sub">{{if .Machine.DiskTotal}}{{fmtBytes .Machine.DiskUsed}} / {{fmtBytes .Machine.DiskTotal}} · {{fmtBytes .Machine.DiskFree}} free{{else}}no data{{end}}</span>
+    <span class="live-bar"><i class="{{tonePct (usagePercent .Machine.DiskUsed .Machine.DiskTotal)}}" style="width:{{barWidth (usagePercent .Machine.DiskUsed .Machine.DiskTotal)}}%"></i></span>
+  </article>
+  <article class="live-metric">
+    <span class="live-label">Ping</span>
+    <span class="live-value">{{if .Network.Ping.OK}}{{.Network.Ping.LatencyMS}}ms{{else if .Network.Reachable}}tcp{{else if .Network.Checked}}down{{else}}—{{end}}</span>
+    <span class="live-sub">{{if .Network.Ping.OK}}ICMP · {{.Network.Target}}{{else if .Network.Reachable}}ICMP blocked · TCP open{{else if .Network.Checked}}no response · {{.Network.Target}}{{else}}network checks off{{end}}</span>
+    <span class="live-bar"><i class="{{networkClass .Network}}" style="width:{{if .Network.Reachable}}100{{else}}0{{end}}%"></i></span>
+  </article>
+</section>
+{{end}}
+
 <div class="pod-grid">
   <div class="col-main">
-    <section class="card">
-      <div class="card-head"><h2>SSH</h2></div>
-      <dl class="kv">
-        <div><dt>Target</dt><dd>{{dash .SSH}}</dd></div>
-        <div><dt>Host</dt><dd>{{dash .Host}}</dd></div>
-        <div><dt>User</dt><dd>{{dash .User}}</dd></div>
-        <div><dt>Port</dt><dd>{{.Port}}</dd></div>
-        <div><dt>ProxyJump</dt><dd>{{dash .ProxyJump}}</dd></div>
-        <div><dt>Command</dt><dd><code>{{$.SSHCommand}}</code></dd></div>
-      </dl>
-    </section>
-
     {{with $.Check}}
     <section class="card">
       <div class="card-head">
-        <h2>Machine</h2>
-        <span class="pill {{machineClass .Machine}}">{{if .Machine.OK}}ok{{else}}error{{end}}</span>
+        <div>
+          <h2>Machine</h2>
+          <span class="muted small">System snapshot collected over SSH</span>
+        </div>
+        <span class="pill {{machineClass .Machine}}">{{if .Machine.OK}}reachable{{else}}unreachable{{end}}</span>
       </div>
-      {{if .Machine.Error}}
-      <p class="muted">{{.Machine.Error}}</p>
-      {{end}}
+      {{if .Machine.Error}}<p class="server-error">{{.Machine.Error}}</p>{{end}}
       <dl class="kv kv-3">
         <div><dt>Hostname</dt><dd>{{dash .Machine.Hostname}}</dd></div>
         <div><dt>OS</dt><dd>{{dash .Machine.OS}}</dd></div>
         <div><dt>Kernel</dt><dd>{{dash .Machine.Kernel}}</dd></div>
         <div><dt>Uptime</dt><dd>{{dash .Machine.Uptime}}</dd></div>
         <div><dt>Load</dt><dd>{{dash .Machine.Load}}</dd></div>
-        <div><dt>CPUs</dt><dd>{{.Machine.CPUs}}</dd></div>
-        <div><dt>Memory</dt><dd>{{fmtBytes .Machine.MemoryUsed}} / {{fmtBytes .Machine.MemoryTotal}}</dd></div>
-        <div><dt>Memory available</dt><dd>{{fmtBytes .Machine.MemoryAvailable}}</dd></div>
-        <div><dt>Disk</dt><dd>{{fmtBytes .Machine.DiskUsed}} / {{fmtBytes .Machine.DiskTotal}} ({{dash .Machine.DiskPercent}}%)</dd></div>
+        <div><dt>CPUs</dt><dd>{{if .Machine.CPUs}}{{.Machine.CPUs}}{{else}}—{{end}}</dd></div>
+        <div><dt>Memory available</dt><dd>{{if .Machine.MemoryAvailable}}{{fmtBytes .Machine.MemoryAvailable}}{{else}}—{{end}}</dd></div>
+        <div><dt>Disk free</dt><dd>{{if .Machine.DiskFree}}{{fmtBytes .Machine.DiskFree}}{{else}}—{{end}}</dd></div>
+        <div><dt>Failed units</dt><dd>{{if .Machine.FailedUnits}}{{len .Machine.FailedUnits}}{{else}}0{{end}}</dd></div>
       </dl>
       {{if .Machine.FailedUnits}}
       <h3 class="subhead">Failed units</h3>
@@ -72,21 +91,93 @@
       {{end}}
     </section>
     {{end}}
+
+    <section class="card">
+      <div class="card-head">
+        <h2>SSH access</h2>
+        <span class="pill muted">{{if .SSHChecks}}checks enabled{{else}}inventory only{{end}}</span>
+      </div>
+      <dl class="kv">
+        <div><dt>Target</dt><dd>{{dash .SSH}}</dd></div>
+        <div><dt>Host</dt><dd>{{dash .Host}}{{if .Port}}:{{.Port}}{{end}}</dd></div>
+        <div><dt>User</dt><dd>{{dash .User}}</dd></div>
+        <div><dt>ProxyJump</dt><dd>{{dash .ProxyJump}}</dd></div>
+      </dl>
+      <h3 class="subhead">Command</h3>
+      <div class="command-row">
+        <code class="command">{{$.SSHCommand}}</code>
+        <button class="icon-btn" type="button" data-copy="{{$.SSHCommand}}" title="Copy SSH command" aria-label="Copy SSH command">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>
+        </button>
+      </div>
+    </section>
   </div>
 
   <div class="col-side">
     {{with $.Check}}
     <section class="card">
       <div class="card-head">
-        <h2>Checks</h2>
-        <span class="muted">{{age .CheckedAt}}</span>
+        <div>
+          <h2>Network</h2>
+          <span class="muted small">{{dash .Network.Target}}</span>
+        </div>
+        <span class="pill {{networkClass .Network}}">{{networkText .Network}}</span>
       </div>
-      <h3 class="subhead">Metrics</h3>
-      <p><span class="pill {{httpClass .Metrics}}">{{httpText .Metrics}}</span></p>
-      {{if .Metrics.URL}}<p class="muted mono">{{.Metrics.URL}}</p>{{end}}
-      <h3 class="subhead">Health</h3>
-      <p><span class="pill {{httpClass .Health}}">{{httpText .Health}}</span></p>
-      {{if .Health.URL}}<p class="muted mono">{{.Health.URL}}</p>{{end}}
+      <div class="server-check-list">
+        <div class="server-check-row">
+          <span class="server-check-state {{if .Network.Ping.OK}}ok{{else if .Network.Reachable}}warn{{else if .Network.Checked}}err{{else}}muted{{end}}"></span>
+          <div>
+            <b>ICMP ping</b>
+            <small>{{if .Network.Ping.OK}}{{.Network.Ping.LatencyMS}} ms{{else if .Network.Ping.Error}}{{.Network.Ping.Error}}{{else if .Network.Checked}}no response{{else}}disabled{{end}}</small>
+          </div>
+        </div>
+        {{range .Network.Ports}}
+        <div class="server-check-row">
+          <span class="server-check-state {{portClass .}}"></span>
+          <div>
+            <b>TCP {{.Port}}</b>
+            <small>{{portText .}}{{if gt .LatencyMS 0}} · {{.LatencyMS}} ms{{end}}{{if and (not .Open) .Error}} · {{.Error}}{{end}}</small>
+          </div>
+        </div>
+        {{else}}
+        <p class="muted small">No ports configured.</p>
+        {{end}}
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <div>
+          <h2>Checks</h2>
+          <span class="muted small">last check {{age .CheckedAt}}</span>
+        </div>
+        <span class="pill {{serverStatus $.Check}}">{{serverStatusText $.Check}}</span>
+      </div>
+      <div class="server-check-list">
+        <div class="server-check-row">
+          <span class="server-check-state {{httpClass .Metrics}}"></span>
+          <div>
+            <b>Metrics</b>
+            <small>{{httpText .Metrics}}</small>
+            {{if .Metrics.URL}}<small class="server-check-url mono">{{.Metrics.URL}}</small>{{end}}
+          </div>
+        </div>
+        <div class="server-check-row">
+          <span class="server-check-state {{httpClass .Health}}"></span>
+          <div>
+            <b>Health</b>
+            <small>{{httpText .Health}}</small>
+            {{if .Health.URL}}<small class="server-check-url mono">{{.Health.URL}}</small>{{end}}
+          </div>
+        </div>
+        <div class="server-check-row">
+          <span class="server-check-state {{if .Machine.OK}}ok{{else if eq .Machine.Error "SSH checks disabled"}}muted{{else if .Machine.Error}}err{{else}}muted{{end}}"></span>
+          <div>
+            <b>SSH</b>
+            <small>{{if .Machine.OK}}reachable{{if .Machine.Hostname}} · {{.Machine.Hostname}}{{end}}{{else}}{{dash .Machine.Error}}{{end}}</small>
+          </div>
+        </div>
+      </div>
     </section>
     {{end}}
 
@@ -94,7 +185,11 @@
       <div class="card-head"><h2>Inventory</h2></div>
       <dl class="kv">
         <div><dt>Source</dt><dd>{{dash .Source}}</dd></div>
+        <div><dt>Env</dt><dd>{{dash .Env}}</dd></div>
         <div><dt>SSH checks</dt><dd>{{if .SSHChecks}}enabled{{else}}disabled{{end}}</dd></div>
+        <div><dt>Network checks</dt><dd>{{if .NetworkChecks}}enabled{{else}}disabled{{end}}</dd></div>
+        <div><dt>Check ports</dt><dd>{{if .CheckPorts}}{{range $i, $port := .CheckPorts}}{{if $i}} {{end}}{{$port}}{{end}} + SSH{{else}}SSH port{{end}}</dd></div>
+        <div><dt>Port</dt><dd>{{if .Port}}{{.Port}}{{else}}22{{end}}</dd></div>
         <div><dt>Metrics URL</dt><dd class="mono">{{dash .MetricsURL}}</dd></div>
         <div><dt>Health URL</dt><dd class="mono">{{dash .HealthURL}}</dd></div>
       </dl>

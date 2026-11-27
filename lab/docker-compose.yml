@@ -1,0 +1,56 @@
+name: hop-lab
+
+services:
+  jira:
+    image: python:3.12-alpine
+    command:
+      - python
+      - /app/mock.py
+      - --kind
+      - jira
+      - --port
+      - "8080"
+      - --public-url
+      - http://127.0.0.1:8081
+    volumes:
+      - ./mock/mock.py:/app/mock.py:ro
+    ports:
+      - "8081:8080"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz')"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  gitlab:
+    image: python:3.12-alpine
+    command:
+      - python
+      - /app/mock.py
+      - --kind
+      - gitlab
+      - --port
+      - "8080"
+      - --public-url
+      - http://127.0.0.1:8082
+    volumes:
+      - ./mock/mock.py:/app/mock.py:ro
+    ports:
+      - "8082:8080"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz')"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  ssh:
+    build: ./ssh
+    ports:
+      - "2222:2222"
+    volumes:
+      - ./keys/id_ed25519.pub:/keys/id_ed25519.pub:ro
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 2222"]
+      interval: 2s
+      timeout: 2s
+      retries: 30

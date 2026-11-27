@@ -45,6 +45,12 @@ type Engine struct{}
 func NewEngine() *Engine { return &Engine{} }
 
 func (e *Engine) Rank(q Query, candidates []Candidate, limit int) []Hit {
+	return e.RankMin(q, candidates, limit, 0)
+}
+
+// RankMin ranks candidates and drops scored hits below minScore. A neutral
+// query (no terms) is never filtered, since those hits all score zero.
+func (e *Engine) RankMin(q Query, candidates []Candidate, limit int, minScore float64) []Hit {
 	hits := make([]Hit, 0, len(candidates))
 	neutral := len(q.Terms) == 0
 	for i := range candidates {
@@ -66,6 +72,15 @@ func (e *Engine) Rank(q Query, candidates []Candidate, limit int) []Hit {
 			}
 			return hits[i].Score > hits[j].Score
 		})
+		if minScore > 0 {
+			kept := hits[:0]
+			for _, hit := range hits {
+				if hit.Score >= minScore {
+					kept = append(kept, hit)
+				}
+			}
+			hits = kept
+		}
 	}
 	if limit > 0 && len(hits) > limit {
 		hits = hits[:limit]

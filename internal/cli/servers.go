@@ -52,7 +52,7 @@ func (a *App) newServersCommand() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "JSON output")
-	cmd.Flags().BoolVar(&check, "check", false, "run HTTP and SSH checks in a table")
+	cmd.Flags().BoolVar(&check, "check", false, "run HTTP, network and SSH checks in a table")
 	cmd.Flags().BoolVar(&useTUI, "tui", false, "open the interactive server TUI (default in a terminal)")
 	cmd.Flags().BoolVar(&table, "table", false, "print a table instead of opening the TUI")
 	return cmd
@@ -133,17 +133,19 @@ func (a *App) newServerCommand() *cobra.Command {
 			fmt.Fprintf(cmd.OutOrStdout(), "tags: %s\n", dash(strings.Join(server.Tags, ",")))
 			fmt.Fprintf(cmd.OutOrStdout(), "metrics: %s\n", dash(server.MetricsURL))
 			fmt.Fprintf(cmd.OutOrStdout(), "health: %s\n", dash(server.HealthURL))
+			fmt.Fprintf(cmd.OutOrStdout(), "network checks: %t · ports: %s\n", server.NetworkChecks, portList(server.CheckPorts))
 			fmt.Fprintf(cmd.OutOrStdout(), "ssh command: %s\n", command)
 			if result != nil {
 				fmt.Fprintf(cmd.OutOrStdout(), "metrics: %s\n", httpStatus(result.Metrics))
 				fmt.Fprintf(cmd.OutOrStdout(), "health: %s\n", httpStatus(result.Health))
 				printMachine(cmd, result.Machine)
+				printNetwork(cmd, result.Network)
 			}
 			return nil
 		},
 	}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "JSON output")
-	cmd.Flags().BoolVar(&check, "check", false, "run HTTP and SSH checks")
+	cmd.Flags().BoolVar(&check, "check", false, "run HTTP, network and SSH checks")
 	return cmd
 }
 
@@ -204,6 +206,45 @@ func printMachine(cmd *cobra.Command, info servers.MachineInfo) {
 	if len(info.FailedUnits) > 0 {
 		fmt.Fprintf(cmd.OutOrStdout(), "failed units: %s\n", strings.Join(info.FailedUnits, ", "))
 	}
+}
+
+func printNetwork(cmd *cobra.Command, network servers.NetworkInfo) {
+	if !network.Checked {
+		fmt.Fprintln(cmd.OutOrStdout(), "network: disabled")
+		return
+	}
+	switch {
+	case network.Ping.OK:
+		fmt.Fprintf(cmd.OutOrStdout(), "network: %s · ping %dms\n", dash(network.Target), network.Ping.LatencyMS)
+	case network.Ping.Error != "":
+		fmt.Fprintf(cmd.OutOrStdout(), "network: %s · ping %s\n", dash(network.Target), network.Ping.Error)
+	default:
+		fmt.Fprintf(cmd.OutOrStdout(), "network: %s · no ping response\n", dash(network.Target))
+	}
+	for _, port := range network.Ports {
+		state := "closed"
+		if port.Open {
+			state = "open"
+		} else if port.State != "" {
+			state = port.State
+		}
+		line := fmt.Sprintf("port %d: %s", port.Port, state)
+		if port.LatencyMS > 0 {
+			line += fmt.Sprintf(" · %dms", port.LatencyMS)
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), line)
+	}
+}
+
+func portList(ports []int) string {
+	values := make([]string, 0, len(ports))
+	for _, port := range ports {
+		values = append(values, fmt.Sprintf("%d", port))
+	}
+	if len(values) == 0 {
+		return "SSH only"
+	}
+	return strings.Join(values, ",")
 }
 
 func httpStatus(check servers.HTTPCheck) string {

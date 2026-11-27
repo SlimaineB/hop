@@ -25,6 +25,7 @@ type runtimeFlags struct {
 	namespaces  []string
 	env         string
 	limit       int
+	minScore    float64
 	refresh     bool
 	noOpen      bool
 	bind        string
@@ -51,7 +52,7 @@ func normalizeArgs(args []string) []string {
 	out := append([]string(nil), args...)
 	valueFlags := map[string]bool{
 		"--bind": true, "--concurrency": true, "--config": true, "--context": true,
-		"--env": true, "--limit": true, "--namespace": true, "--port": true, "--timeout": true,
+		"--env": true, "--limit": true, "--min-score": true, "--namespace": true, "--port": true, "--timeout": true,
 	}
 	for i := 1; i < len(out); i++ {
 		if out[i] == "--" {
@@ -85,6 +86,7 @@ func Execute() int {
 
 func NewRootCommand() *cobra.Command {
 	a := &App{}
+	var providerPrint bool
 	root := &cobra.Command{
 		Use:   "hop [terms...]",
 		Short: "Find a pod or VM, then open logs, metrics or SSH",
@@ -98,7 +100,7 @@ Prefer the explicit categories when possible:
   hop vm <terms...>    search VMs and SSH servers
   hop git <terms...>   search local Git repositories
   hop pkg <terms...>   search container images and registries
-  hop link <keyword>   open a configured browser shortcut
+  hop link [terms...]  open browser shortcuts (TUI with no terms)
   hop issue <key...>   open, search or create tickets
 
 Provider aliases are generated from the config, so 'hop jira OPS-123'
@@ -124,7 +126,7 @@ Examples:
 			applyRuntimeOverrides(cfg, a.flags)
 
 			if id, ok := providerAlias(cfg, args); ok {
-				return a.runProviderAlias(cmd, cfg, id, args[1:])
+				return a.runProviderAlias(cmd, cfg, id, args[1:], providerPrint)
 			}
 
 			query := strings.Join(args, " ")
@@ -157,6 +159,7 @@ Examples:
 	addFilterFlags(root, a)
 	addWebFlags(root, a)
 	root.Flags().BoolVar(&a.flags.refresh, "refresh", false, "force a refresh of all clusters")
+	root.Flags().BoolVar(&providerPrint, "print", false, "print the URL instead of opening the browser for provider aliases")
 	root.Flags().DurationVar(&a.flags.timeout, "timeout", 0, "per-cluster request timeout")
 	root.Flags().IntVar(&a.flags.concurrency, "concurrency", 0, "number of clusters queried in parallel")
 
@@ -170,6 +173,7 @@ Examples:
 		a.newServersCommand(),
 		a.newServerCommand(),
 		a.newSSHCommand(),
+		a.newContainersCommand(),
 		a.newLinkCommand(),
 		a.newIssueCommand(),
 		a.newContextsCommand(),
@@ -186,6 +190,7 @@ func addFilterFlags(cmd *cobra.Command, a *App) {
 	flags.StringArrayVar(&a.flags.namespaces, "namespace", nil, "restrict to one or more namespaces (repeatable)")
 	flags.StringVar(&a.flags.env, "env", "", "restrict to an environment (prod, staging, dev...)")
 	flags.IntVar(&a.flags.limit, "limit", 0, "maximum number of results")
+	flags.Float64Var(&a.flags.minScore, "min-score", 0, "minimum relevance score (0-1), overrides search.min_score")
 }
 
 func addWebFlags(cmd *cobra.Command, a *App) {
@@ -207,6 +212,9 @@ func applyRuntimeOverrides(cfg *config.Config, flags runtimeFlags) {
 	}
 	if flags.concurrency > 0 {
 		cfg.Kube.Concurrency = flags.concurrency
+	}
+	if flags.minScore > 0 {
+		cfg.Search.MinScore = flags.minScore
 	}
 	cfg.Normalize()
 }

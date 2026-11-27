@@ -34,9 +34,11 @@ var envPatterns = []struct {
 func Default() *Config {
 	return &Config{
 		Kube: Kube{
-			Concurrency:    12,
-			RequestTimeout: Duration(10 * time.Second),
-			CacheTTL:       Duration(20 * time.Second),
+			Concurrency:       12,
+			RequestTimeout:    Duration(10 * time.Second),
+			CacheTTL:          Duration(20 * time.Second),
+			MaxPods:           10000,
+			MaxPodsPerContext: 1000,
 		},
 		UI: UI{
 			Bind:  "127.0.0.1",
@@ -44,7 +46,7 @@ func Default() *Config {
 			Theme: "dark",
 		},
 		Search: Search{
-			MinScore:  0.35,
+			MinScore:  0.5,
 			Limit:     50,
 			LiveLimit: 200,
 		},
@@ -107,6 +109,12 @@ func (c *Config) Normalize() {
 	if c.Kube.CacheTTL.Get() < 0 {
 		c.Kube.CacheTTL = 0
 	}
+	if c.Kube.MaxPods < 0 {
+		c.Kube.MaxPods = 0
+	}
+	if c.Kube.MaxPodsPerContext < 0 {
+		c.Kube.MaxPodsPerContext = 0
+	}
 	if c.UI.Bind == "" {
 		c.UI.Bind = "127.0.0.1"
 	}
@@ -117,7 +125,10 @@ func (c *Config) Normalize() {
 		c.UI.Theme = "dark"
 	}
 	if c.Search.MinScore <= 0 {
-		c.Search.MinScore = 0.35
+		c.Search.MinScore = 0.5
+	}
+	if c.Search.MinScore > 1 {
+		c.Search.MinScore = 1
 	}
 	if c.Search.Limit <= 0 {
 		c.Search.Limit = 50
@@ -186,6 +197,7 @@ func (c *Config) Normalize() {
 		server.Env = strings.TrimSpace(server.Env)
 		server.MetricsURL = strings.TrimSpace(server.MetricsURL)
 		server.HealthURL = strings.TrimSpace(server.HealthURL)
+		server.CheckPorts = cleanPorts(server.CheckPorts)
 		server.Tags = cleanList(server.Tags)
 	}
 	for i := range c.Git.Roots {
@@ -197,6 +209,42 @@ func (c *Config) Normalize() {
 	c.Git.Roots = cleanList(c.Git.Roots)
 	c.Git.Repos = cleanList(c.Git.Repos)
 	c.Git.Exclude = cleanList(c.Git.Exclude)
+	if c.Containers.Timeout.Get() <= 0 {
+		c.Containers.Timeout = Duration(10 * time.Second)
+	}
+	if c.Containers.CacheTTL.Get() <= 0 {
+		c.Containers.CacheTTL = Duration(15 * time.Second)
+	}
+	engines := make([]ContainerEngineConfig, 0, len(c.Containers.Engines))
+	seenEngines := map[string]bool{}
+	for _, engine := range c.Containers.Engines {
+		engine.Name = strings.TrimSpace(engine.Name)
+		engine.Type = strings.ToLower(strings.TrimSpace(engine.Type))
+		engine.Command = strings.TrimSpace(engine.Command)
+		args := make([]string, 0, len(engine.Args))
+		for _, arg := range engine.Args {
+			if arg = strings.TrimSpace(arg); arg != "" {
+				args = append(args, arg)
+			}
+		}
+		engine.Args = args
+		if engine.Type == "" {
+			engine.Type = containerEngineType(engine.Name + " " + engine.Command)
+		}
+		if engine.Name == "" {
+			engine.Name = engine.Type
+		}
+		if engine.Command == "" {
+			engine.Command = engine.Type
+		}
+		engine.Name = strings.ToLower(engine.Name)
+		if engine.Name == "" || engine.Type == "" || seenEngines[engine.Name] {
+			continue
+		}
+		seenEngines[engine.Name] = true
+		engines = append(engines, engine)
+	}
+	c.Containers.Engines = engines
 	if c.Git.MaxDepth <= 0 {
 		c.Git.MaxDepth = 3
 	}
@@ -277,6 +325,18 @@ func (c *Config) Normalize() {
 		plugins = append(plugins, plugin)
 	}
 	c.Plugins = plugins
+}
+
+func containerEngineType(value string) string {
+	lower := strings.ToLower(value)
+	switch {
+	case strings.Contains(lower, "podman"):
+		return "podman"
+	case strings.Contains(lower, "docker"):
+		return "docker"
+	default:
+		return ""
+	}
 }
 
 func ExpandPath(p string) string {
@@ -405,6 +465,19 @@ func matchGlob(pattern, value string) bool {
 		}
 	}
 	return false
+}
+
+func cleanPorts(values []int) []int {
+	out := make([]int, 0, len(values))
+	seen := map[int]bool{}
+	for _, port := range values {
+		if port < 1 || port > 65535 || seen[port] {
+			continue
+		}
+		seen[port] = true
+		out = append(out, port)
+	}
+	return out
 }
 
 func cleanList(values []string) []string {
@@ -704,6 +777,8 @@ kube:
   namespaces: []            # restrict listing, e.g. ["apps", "observability"]
   exclude_namespaces: []    # e.g. ["kube-system"]
   resolve_owners: false     # extra calls to resolve ReplicaSet -> Deployment
+  max_pods: 10000           # global pod cap; 0 = unlimited
+  max_pods_per_context: 1000 # per-cluster listing cap; 0 = unlimited
 
 ui:
   bind: 127.0.0.1
@@ -751,9 +826,30 @@ providers: {}
 #    defaults:
 #      project: OPS
 #      issue_type: Task
+#  gitlab:
+#    type: gitlab
+#    base_url: "https://gitlab.example.com"
+#    token_env: GITLAB_TOKEN
+#    auth_scheme: private-token   # private-token or bearer
+#    keywords: [gitlab, ticket, bug]
+#    defaults:
+#      project: group/project
+
+# Local Docker/Podman containers for 'hop containers' and the cockpit source.
+# Empty engines = auto-detect installed 'docker' and 'podman' commands.
+containers:
+  timeout: 10s
+  cache_ttl: 15s
+  engines: []
+#  engines:
+#    - name: docker
+#      type: docker
+#    - name: podman
+#      type: podman
+#      command: podman
 
 search:
-  min_score: 0.35
+  min_score: 0.5   # hide weak matches; override with --min-score
   limit: 50
   live_limit: 200
 

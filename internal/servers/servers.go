@@ -15,18 +15,20 @@ import (
 )
 
 type Server struct {
-	Name       string   `json:"name"`
-	SSH        string   `json:"ssh,omitempty"`
-	Host       string   `json:"host,omitempty"`
-	User       string   `json:"user,omitempty"`
-	Port       int      `json:"port,omitempty"`
-	ProxyJump  string   `json:"proxy_jump,omitempty"`
-	Env        string   `json:"env,omitempty"`
-	Tags       []string `json:"tags,omitempty"`
-	MetricsURL string   `json:"metrics_url,omitempty"`
-	HealthURL  string   `json:"health_url,omitempty"`
-	SSHChecks  bool     `json:"ssh_checks"`
-	Source     string   `json:"source,omitempty"`
+	Name          string   `json:"name"`
+	SSH           string   `json:"ssh,omitempty"`
+	Host          string   `json:"host,omitempty"`
+	User          string   `json:"user,omitempty"`
+	Port          int      `json:"port,omitempty"`
+	ProxyJump     string   `json:"proxy_jump,omitempty"`
+	Env           string   `json:"env,omitempty"`
+	Tags          []string `json:"tags,omitempty"`
+	MetricsURL    string   `json:"metrics_url,omitempty"`
+	HealthURL     string   `json:"health_url,omitempty"`
+	SSHChecks     bool     `json:"ssh_checks"`
+	NetworkChecks bool     `json:"network_checks"`
+	CheckPorts    []int    `json:"check_ports,omitempty"`
+	Source        string   `json:"source,omitempty"`
 }
 
 type Hit struct {
@@ -108,6 +110,7 @@ func (s *Service) serverFromConfig(entry config.ServerConfig, ssh *sshConfig) (S
 		Tags:       entry.Tags,
 		MetricsURL: strings.TrimSpace(entry.MetricsURL),
 		HealthURL:  strings.TrimSpace(entry.HealthURL),
+		CheckPorts: normalizePorts(entry.CheckPorts),
 		Source:     "config",
 	}
 	if server.SSH == "" && server.Host == "" {
@@ -119,6 +122,7 @@ func (s *Service) serverFromConfig(entry config.ServerConfig, ssh *sshConfig) (S
 	}
 	server.Tags = mergeTags(server.Tags, aliasTokens(server.Name, server.SSH))
 	server.SSHChecks = entry.SSHChecks == nil || *entry.SSHChecks
+	server.NetworkChecks = entry.NetworkChecks == nil || *entry.NetworkChecks
 	server.MetricsURL = defaultMetricsURL(server)
 	return server, nil
 }
@@ -140,6 +144,7 @@ func serverFromSSH(alias string, options map[string]string) Server {
 	server.Env = config.InferEnv(strings.Join([]string{server.Name, server.Host, strings.Join(server.Tags, " ")}, " "))
 	server.Tags = mergeTags(nil, aliasTokens(server.Name))
 	server.SSHChecks = true
+	server.NetworkChecks = true
 	server.MetricsURL = defaultMetricsURL(server)
 	return server
 }
@@ -170,6 +175,19 @@ func resolveSSH(server *Server, ssh *sshConfig) {
 	if server.Port == 0 {
 		server.Port = 22
 	}
+}
+
+func normalizePorts(values []int) []int {
+	out := make([]int, 0, len(values))
+	seen := map[int]bool{}
+	for _, port := range values {
+		if port < 1 || port > 65535 || seen[port] {
+			continue
+		}
+		seen[port] = true
+		out = append(out, port)
+	}
+	return out
 }
 
 func parsePort(value string) int {
@@ -348,7 +366,18 @@ func (s *Service) SSHArgs(name string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	return sshArgsFor(*server), nil
+	args := s.sshConfigArgs()
+	return append(args, sshArgsFor(*server)...), nil
+}
+
+func (s *Service) sshConfigArgs() []string {
+	if s.sshPath == "" {
+		return nil
+	}
+	if _, err := os.Stat(s.sshPath); err != nil {
+		return nil
+	}
+	return []string{"-F", s.sshPath}
 }
 
 func (s *Service) SSHCommand(name string) (string, error) {

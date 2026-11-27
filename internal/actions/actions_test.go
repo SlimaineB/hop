@@ -119,3 +119,40 @@ func TestEscapeCmdArg(t *testing.T) {
 		t.Fatalf("escapeCmdArg = %q, want %q", got, want)
 	}
 }
+
+func TestExecUsesFirstContainer(t *testing.T) {
+	pod := kube.Pod{
+		Context: "prod-eu", Namespace: "apps", Name: "api-123",
+		Containers: []kube.Container{{Name: "api"}, {Name: "sidecar"}},
+	}
+	opts := Options{}
+	cmd := Exec(pod, opts)
+	joined := strings.Join(cmd.Args, " ")
+	for _, needle := range []string{"exec -it -c api api-123 -- sh", "--context prod-eu", "-n apps"} {
+		if !strings.Contains(joined, needle) {
+			t.Fatalf("exec args missing %q: %s", needle, joined)
+		}
+	}
+	for _, command := range Commands(pod, opts) {
+		if command.ID != "exec" {
+			continue
+		}
+		if !strings.Contains(command.Command, "exec -it -c api api-123 -- sh") {
+			t.Fatalf("exec command missing container: %s", command.Command)
+		}
+		return
+	}
+	t.Fatal("exec command missing")
+}
+
+func TestLogsTailIncludesTimestampsAndRange(t *testing.T) {
+	pod := kube.Pod{Context: "prod-eu", Namespace: "apps", Name: "api-123"}
+	opts := Options{From: time.Date(2026, 11, 25, 12, 0, 0, 0, time.UTC)}
+	cmd := LogsTail(pod, opts, 42)
+	joined := strings.Join(cmd.Args, " ")
+	for _, needle := range []string{"logs --tail 42", "--all-containers=true", "--timestamps=true", "--prefix", "--since-time 2026-11-25T12:00:00Z", "api-123"} {
+		if !strings.Contains(joined, needle) {
+			t.Fatalf("logs tail args missing %q: %s", needle, joined)
+		}
+	}
+}

@@ -16,6 +16,7 @@ import (
 	"github.com/SlimaineB/hop/internal/actions"
 	"github.com/SlimaineB/hop/internal/app"
 	"github.com/SlimaineB/hop/internal/config"
+	"github.com/SlimaineB/hop/internal/containers"
 	"github.com/SlimaineB/hop/internal/dashboard"
 	"github.com/SlimaineB/hop/internal/kube"
 	"github.com/SlimaineB/hop/internal/plugin"
@@ -28,13 +29,14 @@ import (
 )
 
 type webLauncher struct {
-	svc       *app.Service
-	cfg       *config.Config
-	servers   *servers.Service
-	providers *providers.Set
-	plugins   *plugin.Registry
-	dashboard *dashboard.Service
-	stats     func() app.Stats
+	svc        *app.Service
+	cfg        *config.Config
+	servers    *servers.Service
+	containers *containers.Service
+	providers  *providers.Set
+	plugins    *plugin.Registry
+	dashboard  *dashboard.Service
+	stats      func() app.Stats
 
 	mu     sync.Mutex
 	server *web.Server
@@ -47,6 +49,7 @@ func newWebLauncher(service *app.Service, cfg *config.Config) *webLauncher {
 		return launcher
 	}
 	launcher.servers = servers.New(cfg)
+	launcher.containers = containers.New(cfg)
 	if set, err := loadProviderSet(cfg); err == nil {
 		launcher.providers = set
 	}
@@ -63,6 +66,7 @@ func newWebLauncher(service *app.Service, cfg *config.Config) *webLauncher {
 	launcher.plugins = plugins.Build(cfg, plugins.Deps{
 		Pods:             pods,
 		Servers:          launcher.servers,
+		Containers:       launcher.containers,
 		Repos:            reposService,
 		Registry:         registryService,
 		Providers:        launcher.providers,

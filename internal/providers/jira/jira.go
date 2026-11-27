@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"regexp"
 	"strings"
 	"time"
@@ -86,11 +87,38 @@ func New(id string, cfg config.ProviderConfig) (providers.TicketProvider, error)
 	}, nil
 }
 
-func (p *Provider) ID() string              { return p.id }
-func (p *Provider) Type() string            { return "jira" }
-func (p *Provider) Keywords() []string      { return append([]string(nil), p.keywords...) }
-func (p *Provider) IsKey(value string) bool { return keyPattern.MatchString(strings.TrimSpace(value)) }
+func (p *Provider) ID() string         { return p.id }
+func (p *Provider) Type() string       { return "jira" }
+func (p *Provider) Keywords() []string { return append([]string(nil), p.keywords...) }
+
+func (p *Provider) IsKey(value string) bool {
+	_, ok := p.NormalizeKey(value)
+	return ok
+}
+
+func (p *Provider) NormalizeKey(value string) (string, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", false
+	}
+	if parsed, err := url.Parse(value); err == nil && parsed.Scheme != "" && parsed.Host != "" {
+		last := path.Base(strings.TrimRight(parsed.Path, "/"))
+		if decoded, err := url.PathUnescape(last); err == nil {
+			last = decoded
+		}
+		value = last
+	}
+	value = strings.ToUpper(strings.TrimSpace(value))
+	if !keyPattern.MatchString(value) {
+		return "", false
+	}
+	return value, true
+}
+
 func (p *Provider) URL(key string) string {
+	if normalized, ok := p.NormalizeKey(key); ok {
+		key = normalized
+	}
 	return p.baseURL + "/browse/" + url.PathEscape(strings.TrimSpace(key))
 }
 
@@ -137,6 +165,9 @@ func (p *Provider) Search(ctx context.Context, query string, limit int) ([]provi
 }
 
 func (p *Provider) Get(ctx context.Context, key string) (providers.Ticket, error) {
+	if normalized, ok := p.NormalizeKey(key); ok {
+		key = normalized
+	}
 	key = strings.TrimSpace(key)
 	endpoint := p.baseURL + "/rest/api/2/issue/" + url.PathEscape(key) + "?fields=summary,status,updated"
 	var response struct {

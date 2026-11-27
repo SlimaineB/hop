@@ -35,6 +35,8 @@ type Backend interface {
 	Search(ctx context.Context, req app.SearchRequest) (*app.SearchResult, error)
 	SearchLocal(req app.SearchRequest) (*app.SearchResult, error)
 	Detail(ctx context.Context, ref kube.PodRef, rng *search.TimeRange) (*app.Detail, error)
+	PodStats(ctx context.Context, ref kube.PodRef) (*kube.PodStats, error)
+	PodLogs(ctx context.Context, ref kube.PodRef, rng *search.TimeRange) (string, error)
 	Stats() app.Stats
 }
 
@@ -72,24 +74,35 @@ func New(backend Backend, options Options) (*Server, error) {
 		options.Theme = "dark"
 	}
 	funcs := template.FuncMap{
-		"age":          humanAge,
-		"pct":          func(score float64) int { return int(score*100 + 0.5) },
-		"statusClass":  statusClass,
-		"statusText":   statusText,
-		"hasLinks":     func(links config.RenderedLinks) bool { return links.HasAny() },
-		"fmtTime":      formatTime,
-		"version":      func() string { return version.Version },
-		"json":         toJSON,
-		"lower":        strings.ToLower,
-		"urlquery":     url.QueryEscape,
-		"keys":         sortedKeys,
-		"truncate":     truncate,
-		"fmtBytes":     servers.FormatBytes,
-		"httpClass":    httpClass,
-		"httpText":     httpText,
-		"machineClass": machineClass,
-		"dash":         dash,
-		"safeURL":      safeURL,
+		"age":              humanAge,
+		"pct":              func(score float64) int { return int(score*100 + 0.5) },
+		"statusClass":      statusClass,
+		"statusText":       statusText,
+		"hasLinks":         func(links config.RenderedLinks) bool { return links.HasAny() },
+		"fmtTime":          formatTime,
+		"version":          func() string { return version.Version },
+		"json":             toJSON,
+		"lower":            strings.ToLower,
+		"urlquery":         url.QueryEscape,
+		"keys":             sortedKeys,
+		"truncate":         truncate,
+		"fmtBytes":         servers.FormatBytes,
+		"httpClass":        httpClass,
+		"httpText":         httpText,
+		"machineClass":     machineClass,
+		"serverStatus":     serverStatus,
+		"serverStatusText": serverStatusText,
+		"networkClass":     networkClass,
+		"networkText":      networkText,
+		"portClass":        portClass,
+		"portText":         portText,
+		"usagePercent":     usagePercent,
+		"loadFirst":        loadFirst,
+		"loadPercent":      loadPercent,
+		"tonePct":          tonePct,
+		"barWidth":         barWidth,
+		"dash":             dash,
+		"safeURL":          safeURL,
 	}
 	tmpl, err := template.New("hop").Funcs(funcs).ParseFS(content, "templates/*.html")
 	if err != nil {
@@ -131,6 +144,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/search", s.handleAPISearch)
 	s.mux.HandleFunc("/api/unified", s.handleAPIUnified)
 	s.mux.HandleFunc("/api/pod", s.handleAPIPod)
+	s.mux.HandleFunc("/api/pod/stats", s.handleAPIPodStats)
+	s.mux.HandleFunc("/api/pod/logs", s.handleAPIPodLogs)
 	s.mux.HandleFunc("/api/servers", s.handleAPIServers)
 	s.mux.HandleFunc("/api/server", s.handleAPIServer)
 	s.mux.HandleFunc("/api/contexts", s.handleAPIContexts)
@@ -290,6 +305,144 @@ func machineClass(info servers.MachineInfo) string {
 		return "ok"
 	}
 	return "err"
+}
+
+func serverStatus(check *servers.Check) string {
+	if check == nil {
+		return "muted"
+	}
+	switch {
+	case check.Health.URL != "" && !check.Health.OK:
+		return "err"
+	case check.Metrics.URL != "" && !check.Metrics.OK:
+		return "err"
+	case len(check.Machine.FailedUnits) > 0:
+		return "warn"
+	case check.Machine.OK:
+		return "ok"
+	case check.Network.Checked && !check.Network.Reachable:
+		return "err"
+	case check.Machine.Error != "" && check.Machine.Error != "SSH checks disabled":
+		return "warn"
+	case check.Network.Reachable || check.Health.OK || check.Metrics.OK:
+		return "ok"
+	default:
+		return "muted"
+	}
+}
+
+func serverStatusText(check *servers.Check) string {
+	switch serverStatus(check) {
+	case "ok":
+		return "Online"
+	case "warn":
+		return "Warning"
+	case "err":
+		return "Down"
+	default:
+		return "Unknown"
+	}
+}
+
+func networkClass(info servers.NetworkInfo) string {
+	if !info.Checked {
+		return "muted"
+	}
+	if info.Reachable {
+		return "ok"
+	}
+	return "err"
+}
+
+func networkText(info servers.NetworkInfo) string {
+	if !info.Checked {
+		return "disabled"
+	}
+	if info.Reachable {
+		return "reachable"
+	}
+	return "unreachable"
+}
+
+func portClass(port servers.PortCheck) string {
+	if port.Open {
+		return "ok"
+	}
+	if port.State == "filtered" {
+		return "warn"
+	}
+	return "err"
+}
+
+func portText(port servers.PortCheck) string {
+	if port.Open {
+		return "open"
+	}
+	if port.State == "" {
+		return "closed"
+	}
+	return port.State
+}
+
+func usagePercent(used, total uint64) int {
+	if total == 0 {
+		return 0
+	}
+	percent := int((used*100 + total/2) / total)
+	if percent < 0 {
+		return 0
+	}
+	if percent > 100 {
+		return 100
+	}
+	return percent
+}
+
+func loadFirst(load string) string {
+	fields := strings.Fields(load)
+	if len(fields) == 0 {
+		return "—"
+	}
+	return fields[0]
+}
+
+func loadPercent(load string, cpus int) int {
+	if cpus <= 0 {
+		return 0
+	}
+	value, err := strconv.ParseFloat(loadFirst(load), 64)
+	if err != nil || value < 0 {
+		return 0
+	}
+	percent := int(value/float64(cpus)*100 + 0.5)
+	if percent > 100 {
+		return 100
+	}
+	return percent
+}
+
+func tonePct(percent int) string {
+	switch {
+	case percent >= 90:
+		return "err"
+	case percent >= 75:
+		return "warn"
+	default:
+		return "ok"
+	}
+}
+
+func barWidth(percent int) int {
+	switch {
+	case percent <= 0:
+		return 0
+	case percent < 2:
+		return 2
+	case percent > 100:
+		return 100
+	default:
+		return percent
+	}
 }
 
 func dash(value string) string {

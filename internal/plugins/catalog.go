@@ -13,6 +13,7 @@ func Catalog() []Info {
 	return []Info{
 		{ID: "pods", Title: "Pods", Kind: "pods", Description: "Kubernetes pods from every kubeconfig context"},
 		{ID: "servers", Title: "VMs", Kind: "servers", Description: "SSH and configured VM/server inventory", Selectors: []string{"vm", "vms"}},
+		{ID: "containers", Title: "Containers", Kind: "containers", Description: "Docker and Podman containers", Selectors: []string{"container", "containers", "ctr", "docker", "podman"}},
 		{ID: "repos", Title: "Repositories", Kind: "repos", Description: "Local Git repositories with GitHub/GitLab links", Selectors: []string{"git", "repos"}},
 		{ID: "packages", Title: "Packages", Kind: "packages", Description: "Container images and tags from GHCR, GitLab, and registries", Selectors: []string{"pkg", "packages", "registry"}},
 		{ID: "tickets", Title: "Tickets", Kind: "tickets", Description: "Issue tracker tickets (network, opt-in per search)", Selectors: []string{"ticket", "tickets", "issue", "issues"}},

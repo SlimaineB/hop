@@ -89,6 +89,38 @@ func TestOverviewGroupsAndIssues(t *testing.T) {
 	}
 }
 
+func TestServerNetworkStatus(t *testing.T) {
+	source := &fakeServers{
+		list: []servers.Server{
+			{Name: "tcp-only", Host: "10.0.0.1"},
+			{Name: "unreachable", Host: "10.0.0.2"},
+		},
+		checks: map[string]servers.Check{
+			"tcp-only": {
+				CheckedAt: time.Now(),
+				Machine:   servers.MachineInfo{Error: "SSH checks disabled"},
+				Network:   servers.NetworkInfo{Checked: true, Reachable: true, Ping: servers.PingCheck{Error: "blocked"}, Ports: []servers.PortCheck{{Port: 22, Open: true, State: "open"}}},
+			},
+			"unreachable": {
+				CheckedAt: time.Now(),
+				Machine:   servers.MachineInfo{Error: "ssh failed"},
+				Network:   servers.NetworkInfo{Checked: true, Reachable: false, Ping: servers.PingCheck{Error: "timeout"}, Ports: []servers.PortCheck{{Port: 22, State: "filtered"}}},
+			},
+		},
+	}
+	service := New(nil, source, nil)
+	cards, err := service.ServerChecks(context.Background(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if card := findServer(cards, "tcp-only"); card == nil || card.Status != "ok" || !card.NetworkReachable || card.OpenPorts != 1 {
+		t.Fatalf("tcp-only card = %+v", card)
+	}
+	if card := findServer(cards, "unreachable"); card == nil || card.Status != "down" || card.NetworkReachable {
+		t.Fatalf("unreachable card = %+v", card)
+	}
+}
+
 func TestOverviewWithoutPods(t *testing.T) {
 	service := New(nil, nil, nil)
 	overview, err := service.Overview(context.Background(), false)

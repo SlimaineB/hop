@@ -37,13 +37,15 @@ type Service struct {
 }
 
 type Snapshot struct {
-	Pods      []kube.Pod          `json:"pods"`
-	Contexts  []kube.Context      `json:"contexts"`
-	Errors    []kube.ContextError `json:"errors,omitempty"`
-	FetchedAt time.Time           `json:"fetched_at"`
-	Duration  time.Duration       `json:"duration"`
-	FromCache bool                `json:"from_cache"`
-	CacheAge  time.Duration       `json:"cache_age"`
+	Pods           []kube.Pod          `json:"pods"`
+	Contexts       []kube.Context      `json:"contexts"`
+	Errors         []kube.ContextError `json:"errors,omitempty"`
+	FetchedAt      time.Time           `json:"fetched_at"`
+	Duration       time.Duration       `json:"duration"`
+	FromCache      bool                `json:"from_cache"`
+	CacheAge       time.Duration       `json:"cache_age"`
+	Truncated      bool                `json:"truncated,omitempty"`
+	EstimatedTotal int64               `json:"estimated_total,omitempty"`
 }
 
 type WarmRequest struct {
@@ -152,6 +154,8 @@ func (s *Service) Warm(ctx context.Context, req WarmRequest) (*Snapshot, error) 
 		Concurrency:       s.cfg.Kube.Concurrency,
 		Timeout:           s.cfg.Kube.RequestTimeout.Get(),
 		ResolveOwners:     s.cfg.Kube.ResolveOwners,
+		MaxPods:           s.cfg.Kube.MaxPods,
+		MaxPodsPerContext: s.cfg.Kube.MaxPodsPerContext,
 	})
 	if err != nil {
 		if s.cache != nil {
@@ -168,11 +172,13 @@ func (s *Service) Warm(ctx context.Context, req WarmRequest) (*Snapshot, error) 
 	}
 
 	snap := &Snapshot{
-		Pods:      result.Pods,
-		Contexts:  result.Contexts,
-		Errors:    result.Errors,
-		FetchedAt: result.FetchedAt,
-		Duration:  result.Duration,
+		Pods:           result.Pods,
+		Contexts:       result.Contexts,
+		Errors:         result.Errors,
+		FetchedAt:      result.FetchedAt,
+		Duration:       result.Duration,
+		Truncated:      result.Truncated,
+		EstimatedTotal: result.EstimatedTotal,
 	}
 	s.enrich(snap)
 	if s.cache != nil && ttl > 0 && len(snap.Errors) == 0 {

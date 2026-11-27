@@ -58,6 +58,7 @@ type Totals struct {
 	Servers          int   `json:"servers"`
 	ServersDown      int   `json:"servers_down"`
 	ServersWarn      int   `json:"servers_warn"`
+	PodsEstimated    int64 `json:"pods_estimated,omitempty"`
 	CPU              int64 `json:"cpu_millicores"`
 	Memory           int64 `json:"memory_bytes"`
 	CPUCapacity      int64 `json:"cpu_capacity_millicores"`
@@ -97,32 +98,41 @@ type NodeCard struct {
 }
 
 type ServerCard struct {
-	Name        string    `json:"name"`
-	Env         string    `json:"env,omitempty"`
-	Host        string    `json:"host,omitempty"`
-	User        string    `json:"user,omitempty"`
-	MetricsURL  string    `json:"metrics_url,omitempty"`
-	HealthURL   string    `json:"health_url,omitempty"`
-	SSHChecks   bool      `json:"ssh_checks"`
-	Source      string    `json:"source,omitempty"`
-	Tags        []string  `json:"tags,omitempty"`
-	Status      string    `json:"status"`
-	Checked     bool      `json:"checked"`
-	CheckedAt   time.Time `json:"checked_at,omitempty"`
-	MetricsOK   bool      `json:"metrics_ok"`
-	HealthOK    bool      `json:"health_ok"`
-	MachineOK   bool      `json:"machine_ok"`
-	CPUs        int       `json:"cpus,omitempty"`
-	Load        string    `json:"load,omitempty"`
-	Uptime      string    `json:"uptime,omitempty"`
-	OS          string    `json:"os,omitempty"`
-	MemoryUsed  uint64    `json:"memory_used,omitempty"`
-	MemoryTotal uint64    `json:"memory_total,omitempty"`
-	DiskUsed    uint64    `json:"disk_used,omitempty"`
-	DiskTotal   uint64    `json:"disk_total,omitempty"`
-	DiskPercent string    `json:"disk_percent,omitempty"`
-	FailedUnits []string  `json:"failed_units,omitempty"`
-	Error       string    `json:"error,omitempty"`
+	Name             string              `json:"name"`
+	Env              string              `json:"env,omitempty"`
+	Host             string              `json:"host,omitempty"`
+	User             string              `json:"user,omitempty"`
+	MetricsURL       string              `json:"metrics_url,omitempty"`
+	HealthURL        string              `json:"health_url,omitempty"`
+	SSHChecks        bool                `json:"ssh_checks"`
+	NetworkChecks    bool                `json:"network_checks"`
+	CheckPorts       []int               `json:"check_ports,omitempty"`
+	Source           string              `json:"source,omitempty"`
+	Tags             []string            `json:"tags,omitempty"`
+	Status           string              `json:"status"`
+	Checked          bool                `json:"checked"`
+	CheckedAt        time.Time           `json:"checked_at,omitempty"`
+	MetricsOK        bool                `json:"metrics_ok"`
+	HealthOK         bool                `json:"health_ok"`
+	MachineOK        bool                `json:"machine_ok"`
+	NetworkChecked   bool                `json:"network_checked"`
+	NetworkReachable bool                `json:"network_reachable"`
+	PingOK           bool                `json:"ping_ok"`
+	PingMS           int64               `json:"ping_ms,omitempty"`
+	NetworkError     string              `json:"network_error,omitempty"`
+	OpenPorts        int                 `json:"open_ports"`
+	Ports            []servers.PortCheck `json:"ports,omitempty"`
+	CPUs             int                 `json:"cpus,omitempty"`
+	Load             string              `json:"load,omitempty"`
+	Uptime           string              `json:"uptime,omitempty"`
+	OS               string              `json:"os,omitempty"`
+	MemoryUsed       uint64              `json:"memory_used,omitempty"`
+	MemoryTotal      uint64              `json:"memory_total,omitempty"`
+	DiskUsed         uint64              `json:"disk_used,omitempty"`
+	DiskTotal        uint64              `json:"disk_total,omitempty"`
+	DiskPercent      string              `json:"disk_percent,omitempty"`
+	FailedUnits      []string            `json:"failed_units,omitempty"`
+	Error            string              `json:"error,omitempty"`
 }
 
 type PodIssue struct {
@@ -143,15 +153,17 @@ type PodIssue struct {
 }
 
 type Overview struct {
-	FetchedAt  time.Time           `json:"fetched_at"`
-	Duration   time.Duration       `json:"duration"`
-	Totals     Totals              `json:"totals"`
-	Groups     map[string][]Bucket `json:"groups"`
-	Nodes      []NodeCard          `json:"nodes"`
-	Servers    []ServerCard        `json:"servers"`
-	Issues     []PodIssue          `json:"issues"`
-	IssueTotal int                 `json:"issue_total"`
-	Errors     []string            `json:"errors,omitempty"`
+	FetchedAt      time.Time           `json:"fetched_at"`
+	Duration       time.Duration       `json:"duration"`
+	Truncated      bool                `json:"truncated,omitempty"`
+	EstimatedTotal int64               `json:"estimated_total,omitempty"`
+	Totals         Totals              `json:"totals"`
+	Groups         map[string][]Bucket `json:"groups"`
+	Nodes          []NodeCard          `json:"nodes"`
+	Servers        []ServerCard        `json:"servers"`
+	Issues         []PodIssue          `json:"issues"`
+	IssueTotal     int                 `json:"issue_total"`
+	Errors         []string            `json:"errors,omitempty"`
 }
 
 func (s *Service) Overview(ctx context.Context, force bool) (*Overview, error) {
@@ -188,6 +200,12 @@ func (s *Service) Overview(ctx context.Context, force bool) (*Overview, error) {
 	}
 	if snapshot != nil {
 		overview.Errors = append(overview.Errors, contextErrors(snapshot.Errors)...)
+		overview.Truncated = snapshot.Truncated
+		overview.EstimatedTotal = snapshot.EstimatedTotal
+		overview.Totals.PodsEstimated = snapshot.EstimatedTotal
+		if snapshot.Truncated {
+			overview.Errors = append(overview.Errors, fmt.Sprintf("pod list truncated to %d (estimated ~%d); raise kube.max_pods / kube.max_pods_per_context", len(snapshot.Pods), snapshot.EstimatedTotal))
+		}
 		s.aggregate(overview, snapshot, metrics)
 	}
 	overview.Duration = time.Since(start)
@@ -481,6 +499,7 @@ func (s *Service) inventoryServers() []ServerCard {
 		card := ServerCard{
 			Name: server.Name, Env: server.Env, Host: server.Host, User: server.User,
 			MetricsURL: server.MetricsURL, HealthURL: server.HealthURL, SSHChecks: server.SSHChecks,
+			NetworkChecks: server.NetworkChecks, CheckPorts: server.CheckPorts,
 			Source: server.Source, Tags: server.Tags, Status: "unknown",
 		}
 		s.applyCachedCheck(&card)
@@ -550,18 +569,31 @@ func cardForCheck(server servers.Server, check servers.Check) ServerCard {
 	card := ServerCard{
 		Name: server.Name, Env: server.Env, Host: server.Host, User: server.User,
 		MetricsURL: server.MetricsURL, HealthURL: server.HealthURL, SSHChecks: server.SSHChecks,
+		NetworkChecks: server.NetworkChecks, CheckPorts: server.CheckPorts,
 		Source: server.Source, Tags: server.Tags, Status: "unknown",
 		Checked: true, CheckedAt: check.CheckedAt,
 		MetricsOK: check.Metrics.OK, HealthOK: check.Health.OK, MachineOK: check.Machine.OK,
-		CPUs: check.Machine.CPUs, Load: check.Machine.Load, Uptime: check.Machine.Uptime,
+		NetworkChecked: check.Network.Checked, NetworkReachable: check.Network.Reachable,
+		PingOK: check.Network.Ping.OK, PingMS: check.Network.Ping.LatencyMS,
+		Ports: check.Network.Ports,
+		CPUs:  check.Machine.CPUs, Load: check.Machine.Load, Uptime: check.Machine.Uptime,
 		OS: check.Machine.OS, MemoryUsed: check.Machine.MemoryUsed,
 		MemoryTotal: check.Machine.MemoryTotal, DiskUsed: check.Machine.DiskUsed,
 		DiskTotal: check.Machine.DiskTotal, DiskPercent: check.Machine.DiskPercent,
 		FailedUnits: check.Machine.FailedUnits,
 	}
+	if check.Network.Ping.Error != "" && !check.Network.Ping.OK {
+		card.NetworkError = check.Network.Ping.Error
+	}
+	for _, port := range check.Network.Ports {
+		if port.Open {
+			card.OpenPorts++
+		}
+	}
 	if check.Machine.Error != "" && !check.Machine.OK {
 		card.Error = check.Machine.Error
 	}
+	machineError := check.Machine.Error != "" && check.Machine.Error != "SSH checks disabled"
 	switch {
 	case check.Health.URL != "" && !check.Health.OK:
 		card.Status = "down"
@@ -569,10 +601,14 @@ func cardForCheck(server servers.Server, check servers.Check) ServerCard {
 		card.Status = "down"
 	case len(check.Machine.FailedUnits) > 0:
 		card.Status = "warn"
-	case check.Machine.OK || check.Health.OK || check.Metrics.OK:
+	case check.Machine.OK:
 		card.Status = "ok"
-	case check.Machine.Error != "":
+	case check.Network.Checked && !check.Network.Reachable:
+		card.Status = "down"
+	case machineError:
 		card.Status = "warn"
+	case check.Network.Reachable || check.Health.OK || check.Metrics.OK:
+		card.Status = "ok"
 	}
 	return card
 }

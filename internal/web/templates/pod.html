@@ -33,32 +33,16 @@
   </div>
 </section>
 
-{{if .Pod.Topology}}
-<section class="card topology-card">
-  <div class="card-head">
-    <h2>Topology</h2>
-    <span class="muted">click a node to inspect · scroll horizontally</span>
-  </div>
-  <div class="topology-layout">
-    <div class="topology-scroll">
-      <div id="topology-graph" class="topology-graph" aria-label="Pod topology"></div>
-    </div>
-    <aside id="topology-detail" class="topology-detail">
-      <p class="muted">Select a node.</p>
-    </aside>
-  </div>
-  {{if .Pod.Topology.Warnings}}
-  <details class="topology-warnings">
-    <summary>Some topology resources could not be loaded</summary>
-    <ul>{{range .Pod.Topology.Warnings}}<li class="muted">{{.}}</li>{{end}}</ul>
-  </details>
-  {{end}}
-  <script type="application/json" id="topology-data">{{json .Pod.Topology}}</script>
-</section>
-{{end}}
-
 <div class="pod-grid">
-  <div class="col-main">
+  <div class="col-main" data-tabs>
+    <div class="page-tabs" role="tablist" aria-label="Pod details">
+      <button class="page-tab" id="tab-overview" role="tab" aria-selected="true" aria-controls="panel-overview">Overview</button>
+      {{if .Pod.Topology}}<button class="page-tab" id="tab-topology" role="tab" aria-selected="false" aria-controls="panel-topology" tabindex="-1">Topology</button>{{end}}
+      <button class="page-tab" id="tab-runtime" role="tab" aria-selected="false" aria-controls="panel-runtime" tabindex="-1">Runtime</button>
+      <button class="page-tab" id="tab-logs" role="tab" aria-selected="false" aria-controls="panel-logs" tabindex="-1">Logs</button>
+      <button class="page-tab" id="tab-manifest" role="tab" aria-selected="false" aria-controls="panel-manifest" tabindex="-1">Manifest</button>
+    </div>
+    <div class="tab-panel" id="panel-overview" role="tabpanel" aria-labelledby="tab-overview" tabindex="0">
     <section class="card">
       <div class="card-head"><h2>Overview</h2></div>
       <dl class="kv">
@@ -75,6 +59,37 @@
         <div><dt>Start time</dt><dd>{{fmtTime .Pod.Pod.StartTime}} <span class="muted">({{age .Pod.Pod.StartTime}})</span></dd></div>
         <div><dt>Restarts</dt><dd>{{.Pod.Pod.Restarts}}</dd></div>
       </dl>
+    </section>
+
+    <section class="card live-card" data-live-metrics
+      data-context="{{.Pod.Pod.Context}}"
+      data-namespace="{{.Pod.Pod.Namespace}}"
+      data-name="{{.Pod.Pod.Name}}"
+      data-cpu-limit="{{.Pod.Pod.CPULimit}}"
+      data-memory-limit="{{.Pod.Pod.MemoryLimit}}"
+      data-cpu-request="{{.Pod.Pod.CPURequest}}"
+      data-memory-request="{{.Pod.Pod.MemoryRequest}}">
+      <div class="card-head">
+        <div>
+          <h2>Live usage</h2>
+          <span class="muted small">CPU, memory, network, disk and node pressure</span>
+        </div>
+        <div class="live-head-actions">
+          <span class="pill muted" data-live-source>loading</span>
+          <button class="icon-btn" type="button" data-live-refresh title="Refresh metrics" aria-label="Refresh metrics">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"></path><path d="M21 3v6h-6"></path></svg>
+          </button>
+        </div>
+      </div>
+      <div class="live-body" data-live-body aria-live="polite">
+        <div class="live-grid">
+          <div class="live-skeleton"></div>
+          <div class="live-skeleton"></div>
+          <div class="live-skeleton"></div>
+          <div class="live-skeleton"></div>
+        </div>
+      </div>
+      <p class="muted small live-note" data-live-note hidden></p>
     </section>
 
     {{if .Pod.Node}}
@@ -145,6 +160,50 @@
     </section>
     {{end}}
 
+    <section class="card">
+      <div class="card-head"><h2>Labels &amp; annotations</h2></div>
+      <h3 class="subhead">Labels</h3>
+      {{if .Pod.Labels}}
+      <div class="chips">
+        {{range $k := keys .Pod.Labels}}<span class="chip mono"><b>{{$k}}</b>={{index $.Detail.Pod.Labels $k}}</span>{{end}}
+      </div>
+      {{else}}<p class="muted">No labels.</p>{{end}}
+      <h3 class="subhead">Annotations</h3>
+      {{if .Pod.Annotations}}
+      <div class="chips">
+        {{range $k := keys .Pod.Annotations}}<span class="chip mono" title="{{index $.Detail.Pod.Annotations $k}}"><b>{{$k}}</b>={{truncate (index $.Detail.Pod.Annotations $k) 160}}</span>{{end}}
+      </div>
+      {{else}}<p class="muted">No annotations.</p>{{end}}
+    </section>
+    </div>
+
+    {{if .Pod.Topology}}
+    <div class="tab-panel" id="panel-topology" role="tabpanel" aria-labelledby="tab-topology" tabindex="0" hidden>
+      <section class="card topology-card">
+        <div class="card-head">
+          <h2>Topology</h2>
+          <span class="muted">click a node to inspect · scroll horizontally</span>
+        </div>
+        <div class="topology-layout">
+          <div class="topology-scroll">
+            <div id="topology-graph" class="topology-graph" aria-label="Pod topology"></div>
+          </div>
+          <aside id="topology-detail" class="topology-detail">
+            <p class="muted">Select a node.</p>
+          </aside>
+        </div>
+        {{if .Pod.Topology.Warnings}}
+        <details class="topology-warnings">
+          <summary>Some topology resources could not be loaded</summary>
+          <ul>{{range .Pod.Topology.Warnings}}<li class="muted">{{.}}</li>{{end}}</ul>
+        </details>
+        {{end}}
+        <script type="application/json" id="topology-data">{{json .Pod.Topology}}</script>
+      </section>
+    </div>
+    {{end}}
+
+    <div class="tab-panel" id="panel-runtime" role="tabpanel" aria-labelledby="tab-runtime" tabindex="0" hidden>
     <section class="card">
       <div class="card-head">
         <h2>Containers</h2>
@@ -223,6 +282,34 @@
       {{else}}<p class="muted">No recent events.</p>{{end}}
     </section>
 
+    </div>
+
+    <div class="tab-panel" id="panel-logs" role="tabpanel" aria-labelledby="tab-logs" tabindex="0" hidden>
+    <section class="card logs-card" data-pod-logs
+      data-context="{{.Pod.Pod.Context}}"
+      data-namespace="{{.Pod.Pod.Namespace}}"
+      data-name="{{.Pod.Pod.Name}}"
+      data-query="{{$.BackQuery}}">
+      <div class="card-head">
+        <div>
+          <h2>Logs</h2>
+          <span class="muted small">Tail 500 lines from all containers{{if $.RangeLabel}} · range {{$.RangeLabel}}{{end}}</span>
+        </div>
+        <div class="live-head-actions">
+          <span class="pill muted" data-logs-meta>not loaded</span>
+          <button class="icon-btn" type="button" data-logs-refresh title="Reload logs" aria-label="Reload logs">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"></path><path d="M21 3v6h-6"></path></svg>
+          </button>
+        </div>
+      </div>
+      <div class="log-lines" data-logs-body aria-live="polite">
+        <p class="muted small">Open this tab to load logs.</p>
+      </div>
+      <p class="muted small live-note" data-logs-note hidden></p>
+    </section>
+    </div>
+
+    <div class="tab-panel" id="panel-manifest" role="tabpanel" aria-labelledby="tab-manifest" tabindex="0" hidden>
     <section class="card">
       <details>
         <summary>
@@ -247,21 +334,7 @@
       </details>
     </section>
 
-    <section class="card">
-      <div class="card-head"><h2>Labels &amp; annotations</h2></div>
-      <h3 class="subhead">Labels</h3>
-      {{if .Pod.Labels}}
-      <div class="chips">
-        {{range $k := keys .Pod.Labels}}<span class="chip mono"><b>{{$k}}</b>={{index $.Detail.Pod.Labels $k}}</span>{{end}}
-      </div>
-      {{else}}<p class="muted">No labels.</p>{{end}}
-      <h3 class="subhead">Annotations</h3>
-      {{if .Pod.Annotations}}
-      <div class="chips">
-        {{range $k := keys .Pod.Annotations}}<span class="chip mono" title="{{index $.Detail.Pod.Annotations $k}}"><b>{{$k}}</b>={{truncate (index $.Detail.Pod.Annotations $k) 160}}</span>{{end}}
-      </div>
-      {{else}}<p class="muted">No annotations.</p>{{end}}
-    </section>
+    </div>
   </div>
 
   <aside class="col-side">

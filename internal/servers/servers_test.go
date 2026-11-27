@@ -2,6 +2,7 @@ package servers
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -127,6 +128,60 @@ up 3 days
 `)
 	if info.Hostname != "vm01" || info.CPUs != 4 || info.MemoryTotal != 1000 || info.DiskPercent != "50" {
 		t.Fatalf("machine = %+v", info)
+	}
+}
+
+func TestParsePingLatency(t *testing.T) {
+	cases := []struct {
+		output string
+		want   int64
+		ok     bool
+	}{
+		{"64 bytes from 10.0.0.1: icmp_seq=1 ttl=64 time=1.23 ms", 1, true},
+		{"64 bytes from 10.0.0.1: icmp_seq=1 ttl=64 time<1 ms", 1, true},
+		{"Reply from 10.0.0.1: bytes=32 time=5ms TTL=64", 5, true},
+		{"Request timeout for icmp_seq 0", 0, false},
+	}
+	for _, tc := range cases {
+		got, ok := parsePingLatency(tc.output)
+		if ok != tc.ok || (ok && got != tc.want) {
+			t.Fatalf("parsePingLatency(%q) = %d,%v; want %d,%v", tc.output, got, ok, tc.want, tc.ok)
+		}
+	}
+}
+
+func TestNetworkPortsIncludeSSHAndConfigured(t *testing.T) {
+	ports := networkPorts(Server{Port: 2222, CheckPorts: []int{443, 22, 443, 70000}})
+	want := []int{443, 22, 2222}
+	if len(ports) != len(want) {
+		t.Fatalf("ports = %v, want %v", ports, want)
+	}
+	for i := range want {
+		if ports[i] != want[i] {
+			t.Fatalf("ports = %v, want %v", ports, want)
+		}
+	}
+}
+
+func TestCheckTCPOpen(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			_ = conn.Close()
+		}
+	}()
+	port := listener.Addr().(*net.TCPAddr).Port
+	result := checkTCP(context.Background(), "127.0.0.1", port)
+	if !result.Open || result.State != "open" {
+		t.Fatalf("port check = %+v", result)
 	}
 }
 

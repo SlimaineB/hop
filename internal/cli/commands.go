@@ -187,17 +187,19 @@ func (a *App) newConfigServerCommand() *cobra.Command {
 		Short: "Manage the VM/server inventory",
 	}
 	var (
-		sshAlias  string
-		host      string
-		user      string
-		port      int
-		env       string
-		proxyJump string
-		metrics   string
-		health    string
-		tags      []string
-		noSSH     bool
-		asJSON    bool
+		sshAlias   string
+		host       string
+		user       string
+		port       int
+		env        string
+		proxyJump  string
+		metrics    string
+		health     string
+		tags       []string
+		checkPorts []int
+		noSSH      bool
+		noNetwork  bool
+		asJSON     bool
 	)
 	add := &cobra.Command{
 		Use:   "add NAME [user@host] [tags...]",
@@ -227,10 +229,15 @@ func (a *App) newConfigServerCommand() *cobra.Command {
 				Tags:       allTags,
 				MetricsURL: strings.TrimSpace(metrics),
 				HealthURL:  strings.TrimSpace(health),
+				CheckPorts: checkPorts,
 			}
 			if noSSH {
 				disabled := false
 				entry.SSHChecks = &disabled
+			}
+			if noNetwork {
+				disabled := false
+				entry.NetworkChecks = &disabled
 			}
 			if entry.SSH == "" && entry.Host == "" {
 				entry.SSH = name
@@ -252,7 +259,9 @@ func (a *App) newConfigServerCommand() *cobra.Command {
 	add.Flags().StringVar(&metrics, "metrics-url", "", "Prometheus metrics URL")
 	add.Flags().StringVar(&health, "health-url", "", "health endpoint URL")
 	add.Flags().StringSliceVar(&tags, "tags", nil, "tags (comma separated or repeated)")
+	add.Flags().IntSliceVar(&checkPorts, "check-port", nil, "TCP ports to probe (comma separated or repeated)")
 	add.Flags().BoolVar(&noSSH, "no-ssh-checks", false, "disable SSH machine checks")
+	add.Flags().BoolVar(&noNetwork, "no-network-checks", false, "disable ping and TCP probes")
 
 	list := &cobra.Command{
 		Use:   "list",

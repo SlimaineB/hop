@@ -11,6 +11,7 @@ func TestCanonicalSource(t *testing.T) {
 	cases := map[string]string{
 		"pod": "pods", "K8S": "pods", "vm": "servers", "git": "repos",
 		"pkg": "packages", "issue": "tickets", "link": "shortcuts",
+		"ctr": "containers", "docker": "containers", "podman": "containers",
 		"custom": "custom", "": "",
 	}
 	for input, want := range cases {

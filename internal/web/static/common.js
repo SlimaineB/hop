@@ -46,6 +46,75 @@
     }
   }
 
+  function initTabs() {
+    document.querySelectorAll("[data-tabs]").forEach(function (root) {
+      const tabs = Array.prototype.slice.call(root.querySelectorAll('[role="tab"]'));
+      if (!tabs.length) return;
+      const tablist = root.querySelector('[role="tablist"]');
+
+      function panelFor(tab) {
+        const id = tab.getAttribute("aria-controls");
+        return id ? document.getElementById(id) : null;
+      }
+
+      function select(tab, focus, updateHash) {
+        tabs.forEach(function (candidate) {
+          const selected = candidate === tab;
+          candidate.setAttribute("aria-selected", selected ? "true" : "false");
+          candidate.tabIndex = selected ? 0 : -1;
+          const panel = panelFor(candidate);
+          if (panel) panel.hidden = !selected;
+        });
+        const activePanel = panelFor(tab);
+        root.setAttribute("data-active-tab", activePanel ? activePanel.id.replace(/^panel-/, "") : "");
+        if (focus) tab.focus();
+        if (updateHash) {
+          const slug = activePanel ? activePanel.id.replace(/^panel-/, "") : "";
+          if (slug) {
+            try {
+              history.replaceState(null, "", "#" + slug);
+            } catch (_) {
+              window.location.hash = slug;
+            }
+          }
+        }
+      }
+
+      tabs.forEach(function (tab) {
+        tab.addEventListener("click", function () {
+          select(tab, false, true);
+        });
+      });
+
+      if (tablist) {
+        tablist.addEventListener("keydown", function (event) {
+          const current = tabs.indexOf(document.activeElement);
+          if (current < 0) return;
+          let next = current;
+          if (event.key === "ArrowRight") next = (current + 1) % tabs.length;
+          else if (event.key === "ArrowLeft") next = (current - 1 + tabs.length) % tabs.length;
+          else if (event.key === "Home") next = 0;
+          else if (event.key === "End") next = tabs.length - 1;
+          else return;
+          event.preventDefault();
+          select(tabs[next], true, true);
+        });
+      }
+
+      let initial = tabs.find(function (tab) {
+        return tab.getAttribute("aria-selected") === "true";
+      }) || tabs[0];
+      const hash = window.location.hash.replace(/^#/, "");
+      if (hash) {
+        tabs.forEach(function (tab) {
+          const panel = panelFor(tab);
+          if (panel && panel.id.replace(/^panel-/, "") === hash) initial = tab;
+        });
+      }
+      select(initial, false, false);
+    });
+  }
+
   document.addEventListener("click", function (event) {
     const button = event.target.closest("[data-copy]");
     if (!button) return;
@@ -147,6 +216,8 @@
     link.classList.toggle("active", active);
     if (active) link.setAttribute("aria-current", "page");
   });
+
+  initTabs();
 
   window.hop = {
     toast: toast,
