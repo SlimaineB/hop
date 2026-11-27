@@ -16,6 +16,8 @@
   const metaBar = document.getElementById("meta-bar");
   const contextPills = document.getElementById("context-pills");
   const statsEl = document.getElementById("stats");
+  const source = (tagInput.getAttribute("data-sources") || "").trim();
+  const emptyHint = (resultsBody && resultsBody.getAttribute("data-empty-hint")) || "";
 
   const FILTER_PREFIXES = new Set([
     "pod", "name", "ns", "namespace", "ctx", "context", "cluster", "env", "environment",
@@ -246,6 +248,7 @@
 
     const params = new URLSearchParams();
     if (query) params.set("q", query);
+    if (source) params.set("sources", source);
     params.set("limit", "100");
     if (opts.live) {
       params.set("live", "1");
@@ -768,16 +771,17 @@
   }
 
   function renderEmpty(query) {
+    const message = emptyHint || (query
+      ? "No source matches these tags. Try fewer constraints or a partial name."
+      : "No sources returned data. Check your kubeconfigs, SSH config, Git roots, and registries.");
     const tips = query
-      ? '<span class="badge mono">remove a tag</span><span class="badge mono">git api</span>' +
+      ? '<span class="badge mono">remove a filter</span><span class="badge mono">git api</span>' +
         '<span class="badge mono">vm supervision</span><span class="badge mono">pkg ghcr</span>'
       : '<span class="badge mono">check your config</span><span class="badge mono">hop config git add</span>';
     resultsBody.innerHTML =
       '<div class="empty"><div class="empty-mark">?</div>' +
       "<h3>Nothing found</h3>" +
-      "<p>" + (query
-        ? "No source matches these tags. Try fewer constraints or a partial name."
-        : "No sources returned data. Check your kubeconfigs, SSH config, Git roots, and registries.") + "</p>" +
+      "<p>" + h(message) + "</p>" +
       '<div class="tips">' + tips + "</div></div>";
   }
 

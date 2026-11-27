@@ -1,0 +1,42 @@
+{{define "diagnostics.html"}}
+{{template "head" .}}
+<section class="dash-topline">
+  <div class="dash-heading">
+    <p class="eyebrow">application diagnostics</p>
+    <h1>App <span>pulse</span></h1>
+  </div>
+  <div class="dash-hero-actions">
+    <div class="dash-actions">
+      <button id="diag-refresh" class="ghost" type="button">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"></path><path d="M21 3v6h-6"></path></svg>
+        Run probes
+      </button>
+      <button id="diag-live" class="ghost live-btn on" type="button" aria-pressed="true" title="Refresh every 15 seconds">
+        <span class="live-dot" aria-hidden="true"></span>
+        Live
+      </button>
+    </div>
+  </div>
+</section>
+
+<section class="dash-toolbar">
+  <div>
+    <span class="dash-toolbar-label">Severity order</span>
+    <span class="section-kicker">critical → warning → healthy</span>
+  </div>
+  <span class="dash-updated" id="diag-updated">waiting for probes…</span>
+</section>
+
+{{if eq .AppCount 0}}
+<section class="dash-panel diag-empty">
+  <h2>No applications configured</h2>
+  <p class="muted">Add an <code>apps:</code> section to your hop config with a name, port, health URL or log path. Explicit probes can be added too.</p>
+</section>
+{{else}}
+<div class="diag-app-grid" id="diag-apps">
+  <div class="dash-loading">Running application probes in parallel…</div>
+</div>
+{{end}}
+<section class="dash-errors" id="diag-errors" hidden></section>
+{{template "foot" .}}
+{{end}}

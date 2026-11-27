@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -30,6 +31,8 @@ type Provider struct {
 	token      string
 	authScheme string
 	keywords   []string
+	projects   []string
+	groups     []string
 	project    string
 	httpClient *http.Client
 }
@@ -54,11 +57,14 @@ func New(id string, cfg config.ProviderConfig) (providers.TicketProvider, error)
 	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
 		return nil, fmt.Errorf("GitLab provider %q: invalid base_url %q", id, cfg.BaseURL)
 	}
-	tokenEnv := cfg.TokenEnv
-	if tokenEnv == "" {
-		tokenEnv = "GITLAB_TOKEN"
+	token := strings.TrimSpace(cfg.Token)
+	if token == "" {
+		tokenEnv := cfg.TokenEnv
+		if tokenEnv == "" {
+			tokenEnv = "GITLAB_TOKEN"
+		}
+		token = strings.TrimSpace(os.Getenv(tokenEnv))
 	}
-	token := os.Getenv(tokenEnv)
 	authScheme := strings.ToLower(strings.TrimSpace(cfg.AuthScheme))
 	if authScheme == "" {
 		authScheme = "private-token"
@@ -75,13 +81,21 @@ func New(id string, cfg config.ProviderConfig) (providers.TicketProvider, error)
 	if timeout <= 0 {
 		timeout = 15 * time.Second
 	}
+	projects := cleanProjects(cfg.Projects)
+	groups := cleanProjects(cfg.Groups)
+	project := strings.Trim(strings.TrimSpace(cfg.Defaults["project"]), "/")
+	if project == "" && len(projects) == 1 {
+		project = projects[0]
+	}
 	return &Provider{
 		id:         id,
 		baseURL:    baseURL,
 		token:      token,
 		authScheme: authScheme,
 		keywords:   append([]string(nil), cfg.Keywords...),
-		project:    strings.Trim(strings.TrimSpace(cfg.Defaults["project"]), "/"),
+		projects:   projects,
+		groups:     groups,
+		project:    project,
 		httpClient: &http.Client{Timeout: timeout},
 	}, nil
 }
@@ -161,19 +175,108 @@ func (p *Provider) Search(ctx context.Context, query string, limit int) ([]provi
 	if strings.TrimSpace(query) != "" {
 		params.Set("search", strings.TrimSpace(query))
 	}
-	endpoint := p.baseURL + "/api/v4/issues?" + params.Encode()
-	if p.project != "" {
-		endpoint = p.baseURL + "/api/v4/projects/" + url.PathEscape(p.project) + "/issues?" + params.Encode()
+
+	scopes := p.scopes()
+	if len(scopes) == 0 {
+		var response []issue
+		endpoint := p.baseURL + "/api/v4/issues?" + params.Encode()
+		if err := p.do(ctx, http.MethodGet, endpoint, nil, &response); err != nil {
+			return nil, err
+		}
+		return p.tickets(response, limit), nil
 	}
-	var response []issue
-	if err := p.do(ctx, http.MethodGet, endpoint, nil, &response); err != nil {
-		return nil, err
+
+	seen := map[string]bool{}
+	tickets := make([]providers.Ticket, 0, limit*len(scopes))
+	successes := 0
+	var lastErr error
+	for _, scope := range scopes {
+		var response []issue
+		endpoint := p.baseURL + "/api/v4/" + scope.kind + "/" + escapeProject(scope.path) + "/issues?" + params.Encode()
+		if err := p.do(ctx, http.MethodGet, endpoint, nil, &response); err != nil {
+			lastErr = err
+			continue
+		}
+		successes++
+		for _, item := range response {
+			identity := issueIdentity(item)
+			if seen[identity] {
+				continue
+			}
+			seen[identity] = true
+			tickets = append(tickets, p.ticket(item))
+		}
 	}
-	tickets := make([]providers.Ticket, 0, len(response))
-	for _, item := range response {
-		tickets = append(tickets, p.ticket(item))
+	if successes == 0 && lastErr != nil {
+		return nil, lastErr
+	}
+	sort.SliceStable(tickets, func(i, j int) bool {
+		return tickets[i].Updated > tickets[j].Updated
+	})
+	if len(tickets) > limit {
+		tickets = tickets[:limit]
 	}
 	return tickets, nil
+}
+
+type issueScope struct {
+	kind string
+	path string
+}
+
+func (p *Provider) scopes() []issueScope {
+	scopes := make([]issueScope, 0, len(p.projects)+len(p.groups)+1)
+	for _, project := range p.projects {
+		scopes = append(scopes, issueScope{kind: "projects", path: project})
+	}
+	for _, group := range p.groups {
+		scopes = append(scopes, issueScope{kind: "groups", path: group})
+	}
+	if len(scopes) == 0 && p.project != "" {
+		scopes = append(scopes, issueScope{kind: "projects", path: p.project})
+	}
+	return scopes
+}
+
+func (p *Provider) tickets(items []issue, limit int) []providers.Ticket {
+	tickets := make([]providers.Ticket, 0, len(items))
+	seen := map[string]bool{}
+	for _, item := range items {
+		identity := issueIdentity(item)
+		if seen[identity] {
+			continue
+		}
+		seen[identity] = true
+		tickets = append(tickets, p.ticket(item))
+	}
+	if len(tickets) > limit {
+		tickets = tickets[:limit]
+	}
+	return tickets
+}
+
+func issueIdentity(item issue) string {
+	if item.WebURL != "" {
+		return item.WebURL
+	}
+	if item.ProjectID != 0 {
+		return strconv.Itoa(item.ProjectID) + "#" + strconv.Itoa(item.IID)
+	}
+	return item.References.Full
+}
+
+func cleanProjects(values []string) []string {
+	projects := make([]string, 0, len(values))
+	seen := map[string]bool{}
+	for _, value := range values {
+		value = strings.Trim(strings.TrimSpace(value), "/")
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		projects = append(projects, value)
+	}
+	return projects
 }
 
 func (p *Provider) Get(ctx context.Context, key string) (providers.Ticket, error) {
@@ -186,7 +289,7 @@ func (p *Provider) Get(ctx context.Context, key string) (providers.Ticket, error
 		project = p.project
 	}
 	if project == "" {
-		return providers.Ticket{}, fmt.Errorf("GitLab provider %q: project is required (set providers.%s.defaults.project)", p.id, p.id)
+		return providers.Ticket{}, fmt.Errorf("GitLab provider %q: project is required (set providers.%s.projects or pass --project)", p.id, p.id)
 	}
 	endpoint := p.baseURL + "/api/v4/projects/" + url.PathEscape(project) + "/issues/" + iid
 	var response issue
@@ -206,7 +309,7 @@ func (p *Provider) Create(ctx context.Context, draft providers.TicketDraft) (pro
 		project = p.project
 	}
 	if project == "" {
-		return providers.Ticket{}, fmt.Errorf("GitLab provider %q: project is required (set providers.%s.defaults.project)", p.id, p.id)
+		return providers.Ticket{}, fmt.Errorf("GitLab provider %q: project is required (set providers.%s.projects or pass --project)", p.id, p.id)
 	}
 	payload := map[string]any{"title": title}
 	if strings.TrimSpace(draft.Body) != "" {
@@ -264,7 +367,7 @@ func (p *Provider) do(ctx context.Context, method, endpoint string, body any, ou
 		request.Header.Set("Content-Type", "application/json")
 	}
 	if p.token == "" {
-		return fmt.Errorf("GitLab provider %q: token is not set (configure token_env)", p.id)
+		return fmt.Errorf("GitLab provider %q: token is not set (configure token or token_env)", p.id)
 	}
 	if p.authScheme == "bearer" {
 		request.Header.Set("Authorization", "Bearer "+p.token)

@@ -23,6 +23,9 @@ func (a *App) loadServerService() (*servers.Service, *config.Config, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	if err := requireFeature(cfg, "servers", "VMs/servers"); err != nil {
+		return nil, nil, err
+	}
 	return servers.New(cfg), cfg, nil
 }
 
@@ -181,11 +184,16 @@ func (a *App) runServerTUI(service *servers.Service, cfg *config.Config, query s
 
 func runServerTUI(service *servers.Service, launcher *webLauncher, query string) error {
 	defer launcher.Close()
+	engine, diagErr := newDiagEngine(launcher.cfg)
+	if diagErr != nil {
+		return diagErr
+	}
 	program := tea.NewProgram(
 		tui.NewServers(tui.ServerOptions{
-			Service: service,
-			Initial: query,
-			OpenWeb: launcher.OpenServer,
+			Service:     service,
+			Initial:     query,
+			OpenWeb:     launcher.OpenServer,
+			Diagnostics: engine,
 		}),
 		tea.WithAltScreen(),
 	)

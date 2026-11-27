@@ -3,6 +3,8 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/SlimaineB/hop/internal/config"
@@ -65,15 +67,81 @@ type Stats struct {
 
 func (s *Service) Search(ctx context.Context, req SearchRequest) (*SearchResult, error) {
 	start := time.Now()
-	snap := s.currentFresh()
-	if snap == nil || req.ForceRefresh {
-		var err error
-		snap, err = s.Warm(ctx, WarmRequest{Contexts: req.WarmContexts, ForceRefresh: req.ForceRefresh})
-		if err != nil {
-			return nil, err
-		}
+	if strings.EqualFold(strings.TrimSpace(req.Env), "all") || strings.TrimSpace(req.Env) == "*" {
+		req.Env = ""
+	}
+	env := s.requestEnv(req)
+	warmContexts, err := s.warmContexts(ctx, req, env)
+	if err != nil {
+		return nil, err
+	}
+	snap, err := s.Warm(ctx, WarmRequest{Contexts: warmContexts, ForceRefresh: req.ForceRefresh})
+	if err != nil {
+		return nil, err
 	}
 	return s.rank(snap, req, start), nil
+}
+
+func (s *Service) requestEnv(req SearchRequest) string {
+	if env := strings.TrimSpace(req.Env); env != "" && !strings.EqualFold(env, "all") && env != "*" {
+		return env
+	}
+	return EnvironmentFromQuery(s.cfg, req.Query)
+}
+
+// EnvironmentFromQuery resolves an environment from env: filters or from a
+// free-form term that exactly matches one of the configured environments.
+func EnvironmentFromQuery(cfg *config.Config, query string) string {
+	parsed := search.Parse(query)
+	values := make([]string, 0, len(parsed.Filters[search.FieldEnv]))
+	for _, value := range parsed.Filters[search.FieldEnv] {
+		if strings.HasPrefix(strings.TrimSpace(value), "!") {
+			continue
+		}
+		values = append(values, value)
+	}
+	if len(values) > 0 {
+		return strings.Join(values, ",")
+	}
+	if cfg == nil {
+		return ""
+	}
+	seen := map[string]bool{}
+	for _, term := range parsed.Terms {
+		env, ok := cfg.Kube.MatchEnvironment(term)
+		if !ok || seen[env] {
+			continue
+		}
+		seen[env] = true
+		values = append(values, env)
+	}
+	return strings.Join(values, ",")
+}
+
+func (s *Service) warmContexts(ctx context.Context, req SearchRequest, env string) ([]string, error) {
+	if len(req.WarmContexts) > 0 {
+		return req.WarmContexts, nil
+	}
+	if len(req.Contexts) > 0 {
+		return req.Contexts, nil
+	}
+	if env == "" || strings.EqualFold(env, "all") || env == "*" {
+		return nil, nil
+	}
+	contexts, err := s.Contexts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(contexts))
+	for _, clusterCtx := range contexts {
+		if matchEnv(env, clusterCtx.Env) {
+			names = append(names, clusterCtx.Name)
+		}
+	}
+	if len(names) == 0 {
+		return nil, fmt.Errorf("no Kubernetes context matches environment %q", env)
+	}
+	return names, nil
 }
 
 func (s *Service) SearchLocal(req SearchRequest) (*SearchResult, error) {
@@ -85,14 +153,21 @@ func (s *Service) SearchLocal(req SearchRequest) (*SearchResult, error) {
 }
 
 func (s *Service) rank(snap *Snapshot, req SearchRequest, start time.Time) *SearchResult {
+	if strings.EqualFold(strings.TrimSpace(req.Env), "all") || strings.TrimSpace(req.Env) == "*" {
+		req.Env = ""
+	}
+	if req.Env == "" {
+		req.Env = s.requestEnv(req)
+	}
 	query := search.Parse(req.Query)
 
 	s.mu.RLock()
 	candidates := s.candidates
 	index := s.podsByID
+	version := s.snapshotVersion
 	s.mu.RUnlock()
 
-	filtered := filterCandidates(candidates, index, req)
+	filtered := s.filteredCandidates(candidates, index, version, req)
 	limit := req.Limit
 	if limit <= 0 {
 		limit = s.cfg.Search.Limit
@@ -137,6 +212,23 @@ func (s *Service) rank(snap *Snapshot, req SearchRequest, start time.Time) *Sear
 		Stats:          s.Stats(),
 		SearchDuration: time.Since(start),
 	}
+}
+
+func (s *Service) filteredCandidates(candidates []search.Candidate, index map[string]kube.Pod, version uint64, req SearchRequest) []search.Candidate {
+	if len(req.Contexts) == 0 && len(req.Namespaces) == 0 && req.Env == "" {
+		return candidates
+	}
+	key := fmt.Sprintf("%d\x1f%s\x1f%s\x1f%s", version, strings.Join(req.Contexts, "\x1e"), strings.Join(req.Namespaces, "\x1e"), req.Env)
+	s.filterMu.Lock()
+	defer s.filterMu.Unlock()
+	if s.filterVersion == version && s.filterKey == key {
+		return s.filtered
+	}
+	filtered := filterCandidates(candidates, index, req)
+	s.filterVersion = version
+	s.filterKey = key
+	s.filtered = filtered
+	return filtered
 }
 
 func (s *Service) LinksFor(pod kube.Pod, rng *search.TimeRange) config.RenderedLinks {

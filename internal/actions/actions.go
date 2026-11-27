@@ -284,26 +284,47 @@ func OpenBrowser(url string) error {
 }
 
 func browserCandidates(url string) []browserCandidate {
+	candidates := browserEnvCandidates(url)
 	switch runtime.GOOS {
 	case "darwin":
-		return []browserCandidate{{"open", []string{url}}}
+		return append(candidates, browserCandidate{"open", []string{url}})
 	case "windows":
-		return []browserCandidate{{"cmd", []string{"/c", "start", "", escapeCmdArg(url)}}}
+		return append(candidates, browserCandidate{"cmd", []string{"/c", "start", "", escapeCmdArg(url)}})
 	default:
 		wsl := os.Getenv("WSL_DISTRO_NAME") != "" || os.Getenv("WSL_INTEROP") != ""
 		if wsl {
-			return []browserCandidate{
-				{"wslview", []string{url}},
-				{"cmd.exe", []string{"/c", "start", "", escapeCmdArg(url)}},
-				{"xdg-open", []string{url}},
-				{"sensible-browser", []string{url}},
-			}
+			candidates = append(candidates,
+				browserCandidate{"wslview", []string{url}},
+				browserCandidate{"cmd.exe", []string{"/c", "start", "", escapeCmdArg(url)}},
+			)
 		}
-		return []browserCandidate{
-			{"xdg-open", []string{url}},
-			{"sensible-browser", []string{url}},
+		return append(candidates,
+			browserCandidate{"xdg-open", []string{url}},
+			browserCandidate{"sensible-browser", []string{url}},
+		)
+	}
+}
+
+func browserEnvCandidates(url string) []browserCandidate {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	browser := strings.TrimSpace(os.Getenv("BROWSER"))
+	if browser == "" {
+		return nil
+	}
+	command := browser
+	replaced := false
+	for _, placeholder := range []string{"%s", "%u", "{}"} {
+		if strings.Contains(command, placeholder) {
+			command = strings.ReplaceAll(command, placeholder, `"${1}"`)
+			replaced = true
 		}
 	}
+	if !replaced {
+		command += ` "$1"`
+	}
+	return []browserCandidate{{"sh", []string{"-c", command, "hop-browser", url}}}
 }
 
 var cmdArgEscaper = strings.NewReplacer(

@@ -29,23 +29,26 @@ No daemon, no fzf, no copy-pasting pod names, SSH hosts, or ticket keys.
 
 | Feature | Detail |
 |---|---|
-| Multi-cluster search | Queries every kubeconfig context in parallel |
+| Multi-cluster search | Scopes to the selected environment, then queries contexts in parallel |
 | Fuzzy search | Free-form terms, tag filters, relevance score |
 | Time range | `12h 14h`, `-2h`, `from:… to:…` for logs and metrics |
 | TUI | List, pod preview, node info, keyboard actions |
 | Kubernetes dashboard | Fleet KPIs, env/app/cluster/namespace health, nodes, triage |
 | Server dashboard | Inventory, HTTP/SSH/ping/TCP checks, memory, disk, failed units |
-| Local web UI | Fast search, pod page, node, events, YAML |
+| Local web UI | Collapsible sidebar by domain, global palette, pod page, node, events, YAML |
 | Actions | k9s, logs, describe, node, browser, clipboard |
 | Observability | Grafana, Loki, and Mimir templates per workspace |
 | VM inventory | Discovers `~/.ssh/config` hosts and `servers` entries |
 | VM checks | HTTP metrics/health, ping, TCP ports, uptime, load, memory, disk, failed units |
+| Diagnostics | Deterministic pod, VM and app findings with parallel custom probes |
 | SSH | Copy the SSH command or open an interactive session |
 | Pod topology | Ingress, Service, EndpointSlice, Pod, owner chain, PVC, Node |
 | Browser shortcuts | `hop link jira` opens configured links by keyword |
 | Issue providers | Open/search/create Jira and GitLab tickets, extensible providers |
 | Local containers | Search Docker/Podman containers, logs, shell, inspect, stats |
-| Cockpit search | One query across pods, VMs, repos, packages, containers, tickets, shortcuts |
+| Demo mode | Full synthetic cockpit without Kubernetes, Jira, GitLab, Docker or SSH |
+| Feature toggles | Disable pods, tickets, containers, repos, packages, VMs or shortcuts |
+| Cockpit search | Global palette plus dedicated pod, VM, container, repo, package and ticket pages |
 | Git repositories | Discovers repos, branches, commits, dirty state, ahead/behind |
 | Git links | GitHub / GitLab repo, branch, commit, MR and new-MR links |
 | Packages | GHCR, GitLab and Docker registry images with live tags |
@@ -109,6 +112,9 @@ hop all git hop
 hop all pkg nginx
 hop all vm supervision
 
+# Full demo: synthetic data, no external dependencies
+hop demo
+
 # Infrastructure dashboard
 hop
 hop web
@@ -125,6 +131,13 @@ hop pod api prod -2h
 # VMs only
 hop vm supervision uat
 
+# Diagnostics
+hop diag pod payments-api
+hop diag vm prod-api-01
+hop diag apps
+hop diag app checkout-api
+hop diag pod payments-api --json
+
 # Non-interactive output
 hop pod api ns:apps 12h 14h --plain
 hop search api ns:apps 12h 14h --plain
@@ -140,11 +153,11 @@ hop ctr
 hop ctr --running
 hop ctr logs hop-lab-jira-1 -n 50
 
-# Sources: inspect and toggle without deleting config
-hop config sources
-hop config disable tickets
-hop config enable git
-hop config sources --json
+# Features: inspect and toggle without deleting config
+hop features
+hop features disable tickets pods
+hop features enable git
+hop features --json
 
 # Browser shortcuts by keyword
 hop link grafana
@@ -162,6 +175,20 @@ Term order does not matter:
 hop 12h api ns:apps 14h
 hop ns:apps api 14h 12h
 ```
+
+## Demo mode
+
+`hop demo` launches the web UI with synthetic data and no external dependencies.
+It is useful for screenshots, onboarding, and sales demos:
+
+```bash
+hop demo
+hop demo --no-open --port 8088
+```
+
+The demo includes 12 pods across prod/staging, dashboard metrics, pod details,
+logs, stats, 6 VMs, 3 sample application probes, 5 containers, 5 repositories,
+5 packages, 5 tickets and 5 shortcuts. It never connects to Kubernetes, Jira, GitLab, Docker, Podman or SSH.
 
 ## Search
 
@@ -200,6 +227,12 @@ hop 'label:app=api' 'env:!dev'
 Multiple `label:`, `container:`, `image:`, and `tag:` filters are combined with
 **AND**. For other filter types, multiple values are combined with **OR**.
 
+Pod search requires an environment by default. Use `--env prod`, `env:prod`, or
+a standalone term matching a configured environment (`hop api prod`); `hop`
+prompts in an interactive TUI. The list defaults to `dev`, `uat`, `prod` and is
+configurable with `kube.environments`. Set `kube.require_env: false` or pass
+`--env all` to scan every context.
+
 In VM mode, `name:` is treated as `server:`. Free-form VM terms must all match
 at least one field. The `vm`/`vms` selector is removed before matching. Search
 fields are the server name, SSH alias, host, user, environment, and tags.
@@ -222,9 +255,147 @@ hop ssh sup-uat-01          # interactive SSH
 hop ssh sup-uat-01 uptime   # run a remote command
 ```
 
-In the VM TUI: `s` opens SSH, `c` runs checks, `enter` opens the web page,
+In the VM TUI: `s` opens SSH, `c` runs checks, `t` opens live diagnostics for the selected VM, `enter` opens the web page,
 `y` copies the SSH command, `/` edits the search, `?` shows help. Like the pod
 TUI, editing the query filters results live; `r` reloads the inventory.
+
+## Diagnostics
+
+`hop diag` runs deterministic checks over the data hop already collects. It does
+not call an external AI service.
+
+```bash
+hop diag pod payments-api
+hop diag pod payments-api ns:payments --json
+hop diag vm prod-api-01
+hop diag server prod-api-01 --json
+hop diag apps             # TUI in a terminal, table when piped
+hop diag apps --table     # force the severity-ordered table
+hop diag apps --tui       # force the live TUI
+hop diag app checkout-api
+hop diag app checkout-api --tui
+hop diag apps --json
+```
+
+Pod diagnostics cover phase and readiness, container reasons, restart counts,
+conditions, warning events, QoS, node readiness, live memory versus limits, and
+related resources from the topology (Service, EndpointSlice, Ingress, PVC). VM
+diagnostics cover SSH/machine reachability, load per CPU, memory, disk, failed
+systemd units, health/metrics HTTP endpoints, ICMP/TCP reachability and closed
+ports.
+
+Each report has a verdict (`critical`, `warning`, `info`), a summary and sorted
+findings with evidence and a suggested next step. By default `hop diag pod`
+requires a unique match; use `--first` to diagnose the top result. The web UI
+shows the same reports in the pod **Diagnosis** tab, as a card on the server
+page, and on `/diagnostics` for applications.
+
+### Application probes
+
+Applications are onboarded in the config with a port, health URL and/or log
+path. hop derives the common probes, then adds your explicit ones. All apps and
+all probes run in parallel goroutines; the summary is sorted by severity.
+
+```yaml
+apps:
+  - name: checkout-api
+    env: prod
+    host: 127.0.0.1
+    port: 8080
+    health_url: "http://127.0.0.1:8080/healthz"
+    metrics_url: "http://127.0.0.1:8080/metrics"
+    log_path: /var/log/checkout/app.log
+    log_pattern: '(?i)\b(error|exception|fatal|panic)\b'
+    log_since: 15m
+    probes:
+      - id: queue
+        title: Worker queue
+        type: command
+        command: "systemctl is-active checkout-worker"
+        severity: critical
+        timeout: 3s
+        expect:
+          exit_code: 0
+        remedy: "Restart checkout-worker and check its logs."
+```
+
+Probe types: `http`, `tcp`, `log`, `command`. Derived probes use the ids
+`health`, `metrics`, `port` and `logs`; an explicit probe with the same id
+overrides the derived one. App probes run locally, so a remote port is checked
+through the local network path. Command probes run through `sh -c`.
+
+In a terminal, `hop diag apps` opens a live TUI ordered by severity (critical
+first), with `r` to re-run all probes, `l` to toggle live refresh every 15 s and
+`pgup/pgdown` to scroll findings. Use `--table` when piping output. `hop diag app
+NAME` prints the detailed report, or opens the TUI with `--tui`. The web page
+`/diagnostics` polls `/api/diagnostics/apps`, displays the same verdict order and
+can auto-refresh.
+
+The pod and VM TUIs also have a troubleshoot mode: press `t` on the selected row
+to open live diagnostics (`r` refresh, `l` live, `↑↓` switch target, `t`/`esc`
+back).
+
+### Custom checks
+
+`diagnostics.checks` extends the built-in pod/VM/app rules. Checks can be
+declarative conditions over facts, or SSH commands for VMs.
+
+```yaml
+diagnostics:
+  disabled: [pod-events]
+  checks:
+    - id: restart-budget
+      title: Restart budget exceeded
+      kinds: [pod]
+      severity: critical
+      when:
+        field: pod.restarts
+        op: gt
+        value: 3
+      facts: [pod.restarts]
+      remedy: "Inspect the crash loop and recent container logs."
+
+    - id: postgres-service
+      title: PostgreSQL service is not running
+      kinds: [vm]
+      severity: critical
+      command: "systemctl is-active --quiet postgresql"
+      timeout: 5s
+      expect:
+        exit_code: 0
+      facts: [vm.name, vm.failed_unit_count]
+      remedy: "Start postgresql and check its journal."
+
+    - id: probe-inventory
+      title: Application has probes
+      kinds: [app]
+      severity: info
+      when:
+        field: app.failed_probe_count
+        op: eq
+        value: 0
+      facts: [app.probe_count, app.failed_probe_count]
+```
+
+Condition leaves use `field`, `op` and `value` (or `values`). Combine them with
+`all`, `any` and `not`. Operators: `eq`, `ne`, `in`, `not_in`, `contains`,
+`not_contains`, `matches`, `exists`, `not_exists`, `gt`, `gte`, `lt`, `lte`,
+`starts_with`, `ends_with`, `empty`, `not_empty`.
+
+Useful facts include:
+
+- pod: `pod.phase`, `pod.ready`, `pod.restarts`, `pod.conditions`, `pod.labels`,
+  `pod.containers`, `pod.warning_event_count`, `stats.memory_limit_percent`,
+  `pod.pvc_statuses`;
+- vm: `vm.machine`, `vm.failed_unit_count`, `vm.load_per_cpu`,
+  `vm.memory_percent`, `vm.disk_percent`, `vm.health`, `vm.metrics`,
+  `vm.network.open_ports`;
+- app: `app.env`, `app.port`, `app.log_path`, `app.probes`,
+  `app.failed_probes`, `app.failed_probe_count`, `app.critical_probe_count`.
+
+Check ids are prefixed with `custom-` in reports. Add either the raw check id
+(`restart-budget`) or the finding id (`custom-restart-budget`) to
+`diagnostics.disabled`.
 
 Inventory sources:
 
@@ -323,15 +494,20 @@ selector or the web UI requests network search explicitly.
 
 ### Sources and plugins
 
-Sources are enabled by default. Disable one without deleting its configuration:
+Features are enabled by default. Disable one without deleting its configuration:
 
 ```bash
-hop config sources
-hop config disable tickets
-hop config disable pod link
-hop config enable pods
-hop config sources --json
+hop features
+hop features disable tickets
+hop features disable pods shortcuts
+hop features enable pods
+hop features --json
 ```
+
+`hop config sources`, `hop config enable` and `hop config disable` remain
+available as aliases, but `hop features` is the discoverable entry point.
+Disabling a feature hides it from the cockpit and blocks its dedicated commands
+instead of failing later on a missing Kubernetes, Jira or Docker dependency.
 
 This writes only `sources.disabled` in the YAML config, preserving comments:
 
@@ -364,7 +540,7 @@ echo '{"raw":"deploy","parsed":{"raw":"deploy","terms":["deploy"]},"limit":20}' 
 
 Plugin items are generic: `id`, `title`, `subtitle`, `description`, `badge`,
 `url`, `copy`, `score`, `percent`, and `meta`. Toggle an external plugin with
-`hop config disable my-tools`.
+`hop features disable my-tools`.
 
 ## Git repositories
 
@@ -503,15 +679,16 @@ treat it as a flag: `hop` normalizes it to `last:2h` before parsing.
 
 | Key | Action |
 |---|---|
-| `↑` `↓` or `j` `k` | Move |
+| `↑` `↓`, `ctrl+k` / `j` | Move |
 | `g` / `G` | First / last result |
 | `/` or `i` | Edit the query |
 | `Enter` or `o` | Open the pod page in the web UI |
-| `s` | Open k9s on the pod |
-| `e` | Open a shell in the first container (`kubectl exec -it`) |
+| `s` / `e` | Open a shell in the first container (`kubectl exec -it`) |
+| `k` / `K` | Open k9s on the pod |
 | `l` | Open the in-app logs pane (tail, timestamps, error highlighting) |
 | `L` | Follow logs full-screen (`kubectl logs -f`) |
 | `m` | Open the live metrics view (CPU, RAM, network, disk) |
+| `t` | Open live diagnostics for the selected pod (troubleshoot) |
 | `d` | Paged `kubectl describe pod` |
 | `y` | Copy the `kubectl get` command |
 | `r` | Refresh all clusters |
@@ -546,24 +723,32 @@ hop web --no-open 'api 12h 14h'
 
 The UI listens on `127.0.0.1` by default. `--port 0` picks a free port.
 
-The web UI has three clear entry points:
+The UI is split by domain instead of forcing every object type into one search:
 
 - `/` is the Kubernetes dashboard: pod readiness, restarts, CPU and memory from
   metrics-server, grouping by environment/application/cluster/namespace,
   per-group health, node capacity, and a triage list;
+- `/kubernetes` is the pod inventory with its own filter, stats and context
+  pills;
 - `/servers` is the server dashboard: inventory, HTTP/SSH checks, ping/TCP
   network probes, CPU load, memory, disk, failed units, and a local filter;
-- `/search` is the unified search across pods, VMs, repositories, packages,
-  tickets, and shortcuts.
+- `/diagnostics` runs configured application probes in parallel and shows a
+  severity-ordered summary with HTTP, TCP, log and command probes;
+- `/containers`, `/git`, `/packages`, and `/tickets` are dedicated inventories
+  with their own search fields;
+- `/search` remains the cross-domain result page, but the primary global entry
+  point is the command palette.
 
-Configured browser shortcuts still appear on the search page. A theme toggle in
-the header switches between dark and light mode and remembers the choice in
-`localStorage` (first visit follows the OS preference).
+Navigation lives in a collapsible sidebar (`Cmd/Ctrl+K` opens the global search
+palette). The theme toggle in the compact header switches between dark and light
+mode and remembers the choice in `localStorage` (first visit follows the OS
+preference).
 
 The dashboard APIs are:
 
 - `/api/dashboard` for the Kubernetes overview (`?refresh=1` bypasses caches);
-- `/api/dashboard/servers` for asynchronous server checks.
+- `/api/dashboard/servers` for asynchronous server checks;
+- `/api/diagnostics/apps` for application probe reports.
 
 The UI also exposes:
 
@@ -571,13 +756,14 @@ The UI also exposes:
 - `/api/unified` for grouped cockpit sections and live polling;
 - `/api/search` for pod results;
 - `/api/pod` for the full pod page;
+- `/api/pod/diag` for the pod diagnostic report;
 - `/api/pod/stats` for live pod/node CPU, memory, network and disk usage;
 - `/api/pod/logs` for a 500-line log tail across containers;
 - `/api/contexts` and `/api/stats`.
 
-The pod page is split into Overview, Topology, Runtime, Logs, and Manifest tabs,
-with observability links, kubectl commands, volumes, owner chain, and selectors
-in the side rail. Overview includes a live usage card (CPU, memory, network,
+The pod page is split into Overview, Diagnosis, Topology, Runtime, Logs, and
+Manifest tabs, with observability links, kubectl commands, volumes, owner chain,
+and selectors in the side rail. Overview includes a live usage card (CPU, memory, network,
 disk, containers, node pressure) refreshed every 10 seconds. The Logs tab loads
 a tail on demand and supports manual reload. The topology tab expands to full
 width and shows the graph (Ingress → Service → EndpointSlice → Pod, owner chain,
@@ -587,6 +773,10 @@ PVC, Node); click any node for facts and a copyable `kubectl` command.
 
 | Command | Purpose |
 |---|---|
+| `hop demo` | Full synthetic local demo, alias `showcase` |
+| `hop features` | List optional features, aliases `feature`, `sources` |
+| `hop features enable FEATURE...` | Enable one or more features |
+| `hop features disable FEATURE...` | Disable one or more features |
 | `hop all [terms...]` | Unified cockpit TUI, aliases `cockpit`, `everything` |
 | `hop git [terms...]` | Search local Git repos, aliases `repos`, `repo` |
 | `hop pkg [terms...]` | Search container images, aliases `packages`, `registry` |
@@ -597,6 +787,10 @@ PVC, Node); click any node for facts and a copyable `kubectl` command.
 | `hop ctr stats NAME` | Live resource usage |
 | `hop pod [terms...]` | Search pods, alias `pods`; TUI in a terminal |
 | `hop vm [tags...]` | Search VMs, TUI in a terminal; aliases `servers`, `vms` |
+| `hop diag pod [terms...]` | Diagnose a pod and related resources |
+| `hop diag vm NAME` | Diagnose a VM/server, alias `diag server` |
+| `hop diag apps` | Live app-probe TUI in a terminal, table with `--table`, aliases `diag applications` |
+| `hop diag app NAME` | Diagnose one app; `--tui` opens the live TUI |
 | `hop link [keywords...]` | Open a browser shortcut; TUI with no terms, alias `links` |
 | `hop issue [key\|terms...]` | Open, search or create tickets |
 | `hop issue new [title...]` | Create a ticket, optional `--from-pod` / `--from-vm` |
@@ -620,8 +814,8 @@ PVC, Node); click any node for facts and a copyable `kubectl` command.
 | `hop config show` | Print the resolved config |
 | `hop config check` | Validate config and kubeconfigs |
 | `hop config sources` | List sources and enabled state, aliases `plugins`, `options` |
-| `hop config enable SOURCE...` | Enable one or more sources/plugins |
-| `hop config disable SOURCE...` | Disable one or more sources/plugins |
+| `hop config enable SOURCE...` | Alias for `hop features enable` |
+| `hop config disable SOURCE...` | Alias for `hop features disable` |
 | `hop cache dir` | Print the cache directory |
 | `hop cache clear` | Delete cached snapshots |
 | `hop version` | Print the version |
@@ -633,10 +827,10 @@ Main flags:
 | `--config` | Config file path |
 | `--context` | Restrict to a context, repeatable, glob supported |
 | `--namespace` | Restrict to a namespace, repeatable |
-| `--env` | Restrict to an environment |
+| `--env` | Select `dev`, `uat`, `prod` (configurable); required by default for pod search |
 | `--limit` | Maximum number of results |
 | `--min-score` | Minimum relevance score 0-1 (overrides `search.min_score`) |
-| `--concurrency` | Number of clusters queried in parallel |
+| `--concurrency` | Max clusters queried in parallel, `0` = all selected, `-1` = config |
 | `--timeout` | Per-cluster request timeout |
 | `--refresh` | Ignore the cache and refresh |
 | `--bind` | Web server bind address |
@@ -673,6 +867,18 @@ Kubeconfigs:
 
 Multiple files are merged through the `client-go` loading rules.
 
+Kubernetes requests use protobuf when the API supports it, with JSON as the
+fallback. Pod discovery is one-shot: paginated `List` calls (500 per page), no
+watch or shared informer, so hop does not hold long-lived watch connections.
+Contexts are listed in parallel up to `kube.concurrency` (12 by default);
+`concurrency: 0` explicitly queries every selected context at once.
+
+For EKS contexts whose credential plugin runs `aws eks get-token`, hop caches
+the resulting token per context in `os.UserCacheDir()/hop/aws-tokens/` (mode
+0600) until it expires. Tokens are also shared in-process between contexts that
+use the same cluster, role and AWS profile, so refreshes do not run STS for
+every context each time.
+
 ### Minimal example
 
 ```yaml
@@ -680,7 +886,9 @@ kube:
   kubeconfigs: []
   include_contexts: ["prod-*", "staging-*"]
   exclude_contexts: ["*-readonly"]
-  concurrency: 12
+  environments: [dev, uat, prod] # offered by --env and the TUI prompt
+  require_env: true               # force an environment before listing pods
+  concurrency: 12                 # default; 0 = all selected at once (risky)
   request_timeout: 10s
   cache_ttl: 20s
   all_namespaces: true
@@ -710,22 +918,15 @@ issues:
   default_provider: jira
 providers:
   jira:
-    type: jira
     base_url: "https://company.atlassian.net"
-    username_env: JIRA_USER
-    token_env: JIRA_TOKEN
-    keywords: [jira, ticket, bug]
-    defaults:
-      project: OPS
-      issue_type: Task
+    username: "me@example.com"   # omit for a Server/DC PAT
+    token: "..."                 # or token_env: JIRA_TOKEN
+    projects: [OPS, DEV]
   gitlab:
-    type: gitlab
     base_url: "https://gitlab.example.com"
-    token_env: GITLAB_TOKEN
-    auth_scheme: private-token
-    keywords: [gitlab, ticket, bug]
-    defaults:
-      project: group/project
+    token: "..."                 # or token_env: GITLAB_TOKEN
+    projects: [group/app, group/api]
+    groups: [platform]           # optional
 
 search:
   min_score: 0.5   # hide weak matches; override with --min-score
@@ -784,7 +985,7 @@ workspaces:
 
 The longest context pattern wins. Workspace links override global links field
 by field. If `env` is not set, `hop` infers it from the context name (`prod`,
-`staging`, `dev`, `test`, `sandbox`, `local`).
+`staging`, `uat`, `dev`, `test`, `sandbox`, `local`).
 
 ### Links and placeholders
 
@@ -853,57 +1054,60 @@ hop gitlab "checkout timeout"
 hop gitlab new "Container logs missing"
 ```
 
-Jira configuration:
+Jira configuration (minimal, Jira Server/DC with a PAT):
 
 ```yaml
-issues:
-  default_provider: jira
 providers:
   jira:
-    type: jira
+    base_url: "https://jira.example.com"
+    token: "..."
+    projects: [OPS, DEV]
+```
+
+Jira Cloud API tokens need your account email as the basic-auth username:
+
+```yaml
+providers:
+  jira:
     base_url: "https://company.atlassian.net"
-    username_env: JIRA_USER     # Jira Cloud email
-    token_env: JIRA_TOKEN       # API token or PAT
-    auth_scheme: basic          # basic (Cloud) or bearer (PAT / Server)
-    keywords: [jira, ticket, bug]
-    defaults:
-      project: OPS
-      issue_type: Task
+    username: "me@example.com"
+    token: "..."
+    projects: [OPS, DEV]
 ```
 
-```bash
-export JIRA_USER="me@example.com"
-export JIRA_TOKEN="..."
-```
+`type`, `auth_scheme`, `keywords` and the default project are inferred. With
+several projects, search covers all of them; create uses the single configured
+project automatically, otherwise pass `--project`.
 
-GitLab configuration:
+GitLab configuration (minimal):
 
 ```yaml
 providers:
   gitlab:
-    type: gitlab
     base_url: "https://gitlab.example.com"
-    token_env: GITLAB_TOKEN
-    auth_scheme: private-token   # private-token or bearer
-    keywords: [gitlab, ticket, bug]
-    defaults:
-      project: group/project
+    token: "..."
+    projects: [group/app, group/api]
+    # groups: [platform]   # optional: search every project in a group
 ```
 
-```bash
-export GITLAB_TOKEN="..."
-```
+`type` and `auth_scheme` are inferred. A single project (or `defaults.project`)
+is used for create; with several projects, pass `--project`. Search merges the
+configured projects and groups.
+
+The token can be written directly in the local config, or read from the
+environment with `token_env` (defaults: `JIRA_TOKEN`, `GITLAB_TOKEN`). Prefer
+environment variables on shared machines and in CI. `hop config show` masks the
+token field.
 
 GitLab keys accept `42`, `#42`, `group/project#42`, and issue URLs such as
 `https://gitlab.example.com/group/project/-/issues/42`. Use `--print` on a
 provider alias to print the URL instead of opening the browser.
 
-Tokens are read from the environment, never from the hop config. Jira uses the
-REST API v2 (`/rest/api/2`); GitLab uses REST API v4 (`/api/v4`). Opening a
-ticket only needs the base URL; search and create need the API token. Adding
-another provider means implementing `internal/providers.TicketProvider`,
-registering a factory, and adding its config block. The CLI, TUI, and web UI
-stay unchanged.
+Jira uses the REST API v2 (`/rest/api/2`); GitLab uses REST API v4
+(`/api/v4`). Opening a ticket only needs the base URL; search and create need
+the API token. Adding another provider means implementing
+`internal/providers.TicketProvider`, registering a factory, and adding its
+config block. The CLI, TUI, and web UI stay unchanged.
 
 ## Browser shortcuts
 
@@ -943,7 +1147,8 @@ shortcuts:
 ```
 
 Matching uses the shortcut name, keywords, description, and URL. All arguments
-must match. The best match is opened with the default browser; use `--print`
+must match. The best match is opened with `$BROWSER` when set, then the platform
+default; use `--print`
 for the URL, `--json` for machine output, `--list` to inspect candidates, or
 `--tui` to force the interactive list. Shortcuts also appear in the unified web
 UI for one-click access.
@@ -955,7 +1160,10 @@ UI for one-click access.
   (usually `~/.cache/hop`).
 - `cache_ttl: 0` disables the cache.
 - `hop cache dir` and `hop cache clear` manage the directory.
-- The on-disk cache is not written if a cluster returned an error.
+- A cluster error no longer discards the snapshot: pods from the last cache are
+  merged for the failed context, and the partial snapshot is still cached.
+- AWS EKS exec-token files live under `os.UserCacheDir()/hop/aws-tokens/` and
+  are refreshed only after expiry.
 
 ## Architecture
 
@@ -969,6 +1177,7 @@ internal/app          snapshots, cache, ranking, orchestration
 internal/dashboard    Kubernetes overview, metrics, grouping, server checks
 internal/tui          Bubble Tea
 internal/servers      SSH config, VM inventory, tag search, HTTP/network/SSH checks
+internal/diag         shared diagnostic report, pod/VM/app rules and probes
 internal/providers    ticket provider interfaces, registry, Jira/GitLab adapters
 internal/containers   Docker/Podman inventory, ranking and actions
 internal/web          HTTP server, templates, assets

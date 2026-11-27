@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/SlimaineB/hop/internal/diag"
 	"github.com/SlimaineB/hop/internal/servers"
 )
 
@@ -15,6 +16,7 @@ type serverData struct {
 	Script     string
 	Server     *servers.Server
 	Check      *servers.Check
+	Diagnosis  *diag.Report
 	SSHCommand string
 	BackQuery  string
 }
@@ -70,6 +72,7 @@ func (s *Server) handleServer(w http.ResponseWriter, r *http.Request) {
 		Script:     "",
 		Server:     server,
 		Check:      &result,
+		Diagnosis:  s.diagEngine.DiagnoseServer(ctx, *server, result, s.options.Servers),
 		SSHCommand: command,
 		BackQuery:  r.URL.Query().Get("q"),
 	})
@@ -128,6 +131,7 @@ func (s *Server) handleAPIServer(w http.ResponseWriter, r *http.Request) {
 		defer cancel()
 		result := s.options.Servers.CheckServer(ctx, *server)
 		payload["check"] = result
+		payload["diagnosis"] = s.diagEngine.DiagnoseServer(ctx, *server, result, s.options.Servers)
 	}
 	if command, err := s.options.Servers.SSHCommand(server.Name); err == nil {
 		payload["ssh_command"] = command

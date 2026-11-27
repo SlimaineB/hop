@@ -372,6 +372,9 @@ func (a *App) createTicket(cmd *cobra.Command, provider providers.TicketProvider
 }
 
 func loadProviderSet(cfg *config.Config) (*providers.Set, error) {
+	if err := requireFeature(cfg, "tickets", "tickets"); err != nil {
+		return nil, err
+	}
 	return builtin.Registry().Load(cfg)
 }
 

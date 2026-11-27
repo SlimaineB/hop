@@ -166,7 +166,7 @@ func (p *ClientGoProvider) ListMetrics(ctx context.Context, opts ListOptions) (*
 }
 
 func (p *ClientGoProvider) contextMetrics(ctx context.Context, c Context, opts ListOptions) ([]PodMetrics, []NodeMetrics, error) {
-	client, err := p.client(c.Name)
+	client, err := p.client(ctx, c.Name)
 	if err != nil {
 		return nil, nil, err
 	}

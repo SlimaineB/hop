@@ -1,6 +1,7 @@
 package config
 
 import (
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -30,21 +31,23 @@ func (d Duration) MarshalYAML() (any, error) {
 }
 
 type Config struct {
-	Kube       Kube                      `yaml:"kube"`
-	UI         UI                        `yaml:"ui"`
-	Search     Search                    `yaml:"search"`
-	Links      Links                     `yaml:"links"`
-	Workspaces []Workspace               `yaml:"workspaces"`
-	SSHConfig  string                    `yaml:"ssh_config,omitempty"`
-	Servers    []ServerConfig            `yaml:"servers,omitempty"`
-	Containers Containers                `yaml:"containers,omitempty"`
-	Shortcuts  []ShortcutConfig          `yaml:"shortcuts,omitempty"`
-	Issues     IssuesConfig              `yaml:"issues,omitempty"`
-	Providers  map[string]ProviderConfig `yaml:"providers,omitempty"`
-	Git        Git                       `yaml:"git,omitempty"`
-	Packages   Packages                  `yaml:"packages,omitempty"`
-	Plugins    []PluginConfig            `yaml:"plugins,omitempty"`
-	Sources    Sources                   `yaml:"sources,omitempty"`
+	Kube        Kube                      `yaml:"kube"`
+	UI          UI                        `yaml:"ui"`
+	Search      Search                    `yaml:"search"`
+	Links       Links                     `yaml:"links"`
+	Workspaces  []Workspace               `yaml:"workspaces"`
+	SSHConfig   string                    `yaml:"ssh_config,omitempty"`
+	Servers     []ServerConfig            `yaml:"servers,omitempty"`
+	Apps        []AppConfig               `yaml:"apps,omitempty"`
+	Containers  Containers                `yaml:"containers,omitempty"`
+	Shortcuts   []ShortcutConfig          `yaml:"shortcuts,omitempty"`
+	Issues      IssuesConfig              `yaml:"issues,omitempty"`
+	Providers   map[string]ProviderConfig `yaml:"providers,omitempty"`
+	Git         Git                       `yaml:"git,omitempty"`
+	Packages    Packages                  `yaml:"packages,omitempty"`
+	Plugins     []PluginConfig            `yaml:"plugins,omitempty"`
+	Sources     Sources                   `yaml:"sources,omitempty"`
+	Diagnostics Diagnostics               `yaml:"diagnostics,omitempty"`
 }
 
 type Sources struct {
@@ -94,13 +97,16 @@ type IssuesConfig struct {
 }
 
 type ProviderConfig struct {
-	Type        string            `yaml:"type"`
+	Type        string            `yaml:"type,omitempty"`
 	BaseURL     string            `yaml:"base_url,omitempty"`
 	Username    string            `yaml:"username,omitempty"`
 	UsernameEnv string            `yaml:"username_env,omitempty"`
+	Token       string            `yaml:"token,omitempty"`
 	TokenEnv    string            `yaml:"token_env,omitempty"`
 	AuthScheme  string            `yaml:"auth_scheme,omitempty"`
 	Keywords    []string          `yaml:"keywords,omitempty"`
+	Projects    []string          `yaml:"projects,omitempty"`
+	Groups      []string          `yaml:"groups,omitempty"`
 	Defaults    map[string]string `yaml:"defaults,omitempty"`
 	Timeout     Duration          `yaml:"timeout,omitempty"`
 }
@@ -145,6 +151,8 @@ type Kube struct {
 	Kubeconfigs       []string `yaml:"kubeconfigs"`
 	IncludeContexts   []string `yaml:"include_contexts"`
 	ExcludeContexts   []string `yaml:"exclude_contexts"`
+	Environments      []string `yaml:"environments"`
+	RequireEnv        *bool    `yaml:"require_env,omitempty"`
 	Concurrency       int      `yaml:"concurrency"`
 	RequestTimeout    Duration `yaml:"request_timeout"`
 	CacheTTL          Duration `yaml:"cache_ttl"`
@@ -158,6 +166,31 @@ type Kube struct {
 
 func (k Kube) ListAllNamespaces() bool {
 	return k.AllNamespaces == nil || *k.AllNamespaces
+}
+
+func (k Kube) EnvRequired() bool {
+	return k.RequireEnv == nil || *k.RequireEnv
+}
+
+func (k Kube) EnvironmentList() []string {
+	if len(k.Environments) > 0 {
+		return k.Environments
+	}
+	return []string{"dev", "uat", "prod"}
+}
+
+func (k Kube) HasEnvironment(value string) bool {
+	_, ok := k.MatchEnvironment(value)
+	return ok
+}
+
+func (k Kube) MatchEnvironment(value string) (string, bool) {
+	for _, env := range k.EnvironmentList() {
+		if strings.EqualFold(strings.TrimSpace(env), strings.TrimSpace(value)) {
+			return env, true
+		}
+	}
+	return "", false
 }
 
 type UI struct {

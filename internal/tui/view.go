@@ -26,6 +26,9 @@ func (m Model) View() string {
 	if m.metricsMode {
 		return m.metricsView()
 	}
+	if m.diagMode {
+		return m.diagView()
+	}
 	width := max(20, m.width)
 	height := max(10, m.height)
 
@@ -272,7 +275,7 @@ func (m Model) previewView(width, height int) string {
 		content = append(content,
 			styleMuted.Render("  select a pod with ↑↓ / j k"),
 			styleDim.Render("  ⏎ or o opens the full web page"),
-			styleDim.Render("  l logs · m metrics · e shell"),
+			styleDim.Render("  l logs · m metrics · s shell"),
 		)
 		return m.renderPreviewBox(content, rows, width)
 	}
@@ -389,7 +392,7 @@ func (m Model) logsView() string {
 	}
 	header := strings.Join([]string{clip(title, width), clip(meta, width)}, "\n")
 
-	footer := styleDim.Render(clip("↑↓ scroll · g/G top/bottom · r reload · e shell · m metrics · esc close · ? help · q quit", width))
+	footer := styleDim.Render(clip("↑↓ scroll · g/G top/bottom · r reload · s shell · m metrics · esc close · ? help · q quit", width))
 	rows := m.logsVisibleRows()
 	content := make([]string, 0, rows)
 	switch {
@@ -471,13 +474,13 @@ func (m Model) metricsView() string {
 		if source == "" {
 			source = "metrics"
 		}
-		meta += styleDim.Render("  ·  " + source + "  ·  ↻ " + shortDuration(time.Since(m.stats.FetchedAt)) + " ago")
+		meta += styleDim.Render("  ·  " + source)
 	}
 	if m.statsLoading {
 		meta += "  " + m.spinner.View() + styleDim.Render(" sampling")
 	}
 	header := strings.Join([]string{clip(title, width), clip(meta, width)}, "\n")
-	footer := styleDim.Render(clip("↑↓ scroll · r refresh · l logs · e shell · m close · ? help · q quit", width))
+	footer := styleDim.Render(clip("↑↓ scroll · r refresh · l logs · s shell · m close · ? help · q quit", width))
 
 	bodyHeight := m.metricsBodyHeight()
 	content := m.metricsContent(width - 4)
@@ -643,7 +646,7 @@ func hitOrZero(hit app.HitView, ok bool) kube.Pod {
 }
 
 func (m Model) footerView(width int) string {
-	hints := "↑↓ nav · / search · ⏎ web · l logs · m metrics · e shell · ? help · q quit"
+	hints := "↑↓ nav · / search · ⏎ web · l logs · m metrics · t troubleshoot · s shell · k k9s · ? help · q quit"
 	return styleDim.Render(clip(hints, width))
 }
 
@@ -651,14 +654,15 @@ func (m Model) helpView() string {
 	width := max(60, m.width)
 	keys := [][2]string{
 		{"/ or i", "edit the search"},
-		{"↑↓ / j k", "navigate results"},
+		{"↑↓ / ctrl+k / j", "navigate results"},
 		{"g / G", "first / last result"},
 		{"⏎ or o", "open the web page (node, events, YAML)"},
 		{"l", "open the in-app logs pane (tail + timestamps)"},
 		{"L", "follow logs full-screen (kubectl logs -f)"},
 		{"m", "open the live metrics view (cpu/ram/net/disk)"},
-		{"e", "open a shell in the first container (kubectl exec)"},
-		{"s", "open k9s on the pod"},
+		{"t", "open live diagnostics for the selected pod"},
+		{"s / e", "open a shell in the first container (kubectl exec)"},
+		{"k / K", "open k9s on the pod"},
 		{"d", "describe the pod"},
 		{"y", "copy the kubectl get command"},
 		{"r", "refresh all clusters"},
@@ -944,11 +948,7 @@ func (m Model) previewMetricLines(width int) []string {
 	if source == "" {
 		source = "metrics"
 	}
-	age := "live"
-	if !stats.FetchedAt.IsZero() {
-		age = shortDuration(time.Since(stats.FetchedAt)) + " ago"
-	}
-	lines := []string{styleDim.Render("  " + source + " · " + age)}
+	lines := []string{styleDim.Render("  " + source)}
 	lines = append(lines,
 		resourceLine("CPU", fmtCPU(stats.CPU), stats.CPU, cpuBase, cpuSuffix, fmtCPU, width),
 		resourceLine("RAM", fmtBytes(stats.Memory), stats.Memory, memBase, memSuffix, fmtBytes, width),

@@ -22,6 +22,7 @@
       <span class="badge">{{.Pod.Pod.Namespace}}</span>
       <span class="badge">age {{age .Pod.Pod.StartTime}}</span>
       {{if .Pod.Pod.OwnerName}}<span class="badge">{{.Pod.Pod.OwnerKind}}/{{.Pod.Pod.OwnerName}}</span>{{end}}
+      {{with $.Diagnosis}}<span class="badge diag-badge diag-{{.Verdict}}">{{.Verdict}}</span>{{end}}
       {{if $.RangeLabel}}<span class="badge range">logs {{$.RangeLabel}}</span>{{end}}
     </div>
   </div>
@@ -37,6 +38,7 @@
   <div class="col-main" data-tabs>
     <div class="page-tabs" role="tablist" aria-label="Pod details">
       <button class="page-tab" id="tab-overview" role="tab" aria-selected="true" aria-controls="panel-overview">Overview</button>
+      {{if $.Diagnosis}}<button class="page-tab" id="tab-diagnosis" role="tab" aria-selected="false" aria-controls="panel-diagnosis" tabindex="-1">Diagnosis</button>{{end}}
       {{if .Pod.Topology}}<button class="page-tab" id="tab-topology" role="tab" aria-selected="false" aria-controls="panel-topology" tabindex="-1">Topology</button>{{end}}
       <button class="page-tab" id="tab-runtime" role="tab" aria-selected="false" aria-controls="panel-runtime" tabindex="-1">Runtime</button>
       <button class="page-tab" id="tab-logs" role="tab" aria-selected="false" aria-controls="panel-logs" tabindex="-1">Logs</button>
@@ -176,6 +178,12 @@
       {{else}}<p class="muted">No annotations.</p>{{end}}
     </section>
     </div>
+
+    {{if $.Diagnosis}}
+    <div class="tab-panel" id="panel-diagnosis" role="tabpanel" aria-labelledby="tab-diagnosis" tabindex="0" hidden>
+      {{template "diagnosis" $.Diagnosis}}
+    </div>
+    {{end}}
 
     {{if .Pod.Topology}}
     <div class="tab-panel" id="panel-topology" role="tabpanel" aria-labelledby="tab-topology" tabindex="0" hidden>

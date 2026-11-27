@@ -10,6 +10,7 @@ import (
 
 	"github.com/SlimaineB/hop/internal/app"
 	"github.com/SlimaineB/hop/internal/config"
+	"github.com/SlimaineB/hop/internal/diag"
 	"github.com/SlimaineB/hop/internal/kube"
 	"github.com/SlimaineB/hop/internal/plugin"
 	"github.com/SlimaineB/hop/internal/search"
@@ -20,12 +21,20 @@ type indexData struct {
 	Script       string
 	InitialQuery string
 	Shortcuts    []config.ShortcutConfig
+	Source       string
+	Eyebrow      string
+	Heading      string
+	Lede         string
+	Placeholder  string
+	EmptyHint    string
+	ShowStats    bool
 }
 
 type podData struct {
 	Title      string
 	Script     string
 	Detail     *app.Detail
+	Diagnosis  *diag.Report
 	BackQuery  string
 	K9s        string
 	TimeRange  *search.TimeRange
@@ -120,6 +129,107 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		Script:       "index.js",
 		InitialQuery: query,
 		Shortcuts:    shortcuts,
+		Eyebrow:      "Universal search",
+		Heading:      "Search everything",
+		Lede:         "One query across pods, VMs, containers, repositories, packages and tickets.",
+		Placeholder:  "Search anything…",
+		EmptyHint:    "No source matches this query. Try fewer constraints or a partial name.",
+		ShowStats:    true,
+	})
+}
+
+var domainPages = map[string]struct {
+	Source      string
+	Title       string
+	Eyebrow     string
+	Heading     string
+	Lede        string
+	Placeholder string
+	EmptyHint   string
+	ShowStats   bool
+}{
+	"/kubernetes": {
+		Source:      "pods",
+		Title:       "Kubernetes",
+		Eyebrow:     "Pods",
+		Heading:     "Kubernetes",
+		Lede:        "Pods across every context. Filter by name, namespace, environment, owner, label or image.",
+		Placeholder: "Filter pods…",
+		EmptyHint:   "No pod matches this filter.",
+		ShowStats:   true,
+	},
+	"/containers": {
+		Source:      "containers",
+		Title:       "Containers",
+		Eyebrow:     "Runtime",
+		Heading:     "Containers",
+		Lede:        "Local Docker and Podman workloads, images and compose projects.",
+		Placeholder: "Filter containers, images or projects…",
+		EmptyHint:   "No container matches this filter.",
+	},
+	"/git": {
+		Source:      "repos",
+		Title:       "Repositories",
+		Eyebrow:     "Git",
+		Heading:     "Repositories",
+		Lede:        "Local checkouts with branch, commit and remote status.",
+		Placeholder: "Filter repositories, branches or commits…",
+		EmptyHint:   "No repository matches this filter.",
+	},
+	"/packages": {
+		Source:      "packages",
+		Title:       "Packages",
+		Eyebrow:     "Registries",
+		Heading:     "Packages",
+		Lede:        "Container images and tags discovered from pods and registries.",
+		Placeholder: "Filter images, registries or tags…",
+		EmptyHint:   "No package matches this filter.",
+	},
+	"/tickets": {
+		Source:      "tickets",
+		Title:       "Tickets",
+		Eyebrow:     "Issue trackers",
+		Heading:     "Tickets",
+		Lede:        "Search Jira and GitLab tickets by key, title or status.",
+		Placeholder: "Search ticket key or title…",
+		EmptyHint:   "Type a ticket key or title to search.",
+	},
+}
+
+func (s *Server) handleDomain(w http.ResponseWriter, r *http.Request) {
+	if !onlyGET(w, r) {
+		return
+	}
+	page, ok := domainPages[r.URL.Path]
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	if strings.TrimSpace(r.URL.Query().Get("q")) == "" {
+		s.render(w, http.StatusOK, "index.html", indexData{
+			Title:       page.Title,
+			Script:      "index.js",
+			Source:      page.Source,
+			Eyebrow:     page.Eyebrow,
+			Heading:     page.Heading,
+			Lede:        page.Lede,
+			Placeholder: page.Placeholder,
+			EmptyHint:   page.EmptyHint,
+			ShowStats:   page.ShowStats,
+		})
+		return
+	}
+	s.render(w, http.StatusOK, "index.html", indexData{
+		Title:        page.Title,
+		Script:       "index.js",
+		InitialQuery: strings.TrimSpace(r.URL.Query().Get("q")),
+		Source:       page.Source,
+		Eyebrow:      page.Eyebrow,
+		Heading:      page.Heading,
+		Lede:         page.Lede,
+		Placeholder:  page.Placeholder,
+		EmptyHint:    page.EmptyHint,
+		ShowStats:    page.ShowStats,
 	})
 }
 
@@ -170,10 +280,14 @@ func (s *Server) handlePod(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
+	statsCtx, statsCancel := context.WithTimeout(ctx, 5*time.Second)
+	stats, _ := s.backend.PodStats(statsCtx, ref)
+	statsCancel()
 	s.render(w, http.StatusOK, "pod.html", podData{
 		Title:      ref.Name,
 		Script:     "pod.js",
 		Detail:     detail,
+		Diagnosis:  s.diagEngine.DiagnosePod(ctx, detail.Pod, stats),
 		BackQuery:  values.Get("q"),
 		K9s:        k9sCommand,
 		TimeRange:  query.TimeRange,
@@ -234,6 +348,7 @@ func (s *Server) handleAPIUnified(w http.ResponseWriter, r *http.Request) {
 	raw := strings.TrimSpace(values.Get("q"))
 	ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
 	defer cancel()
+	sources := append(parseMulti(values["source"]), parseMulti(values["sources"])...)
 	result := s.registry.Search(ctx, plugin.Query{
 		Raw:            raw,
 		Parsed:         search.Parse(raw),
@@ -244,6 +359,7 @@ func (s *Server) handleAPIUnified(w http.ResponseWriter, r *http.Request) {
 		ForceRefresh:   refresh,
 		Local:          live,
 		IncludeNetwork: tickets && !live,
+		Sources:        sources,
 	})
 	writeJSON(w, http.StatusOK, result)
 }
@@ -275,6 +391,38 @@ func (s *Server) handleAPIPod(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, detail)
+}
+
+func (s *Server) handleAPIPodDiag(w http.ResponseWriter, r *http.Request) {
+	if !onlyGET(w, r) {
+		return
+	}
+	if s.backend == nil {
+		writeError(w, http.StatusServiceUnavailable, errText("pod search unavailable"))
+		return
+	}
+	values := r.URL.Query()
+	ref := kube.PodRef{
+		Context:   values.Get("context"),
+		Namespace: values.Get("namespace"),
+		Name:      values.Get("name"),
+	}
+	if ref.Context == "" || ref.Namespace == "" || ref.Name == "" {
+		writeError(w, http.StatusBadRequest, errText("context, namespace and name are required"))
+		return
+	}
+	query := search.Parse(values.Get("q"))
+	ctx, cancel := context.WithTimeout(r.Context(), 25*time.Second)
+	defer cancel()
+	detail, err := s.backend.Detail(ctx, ref, query.TimeRange)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err)
+		return
+	}
+	statsCtx, statsCancel := context.WithTimeout(ctx, 8*time.Second)
+	stats, _ := s.backend.PodStats(statsCtx, ref)
+	statsCancel()
+	writeJSON(w, http.StatusOK, s.diagEngine.DiagnosePod(ctx, detail.Pod, stats))
 }
 
 func (s *Server) handleAPIPodStats(w http.ResponseWriter, r *http.Request) {

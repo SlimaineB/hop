@@ -25,15 +25,19 @@ var envPatterns = []struct {
 	{"preprod", regexp.MustCompile(`(?i)(^|[\s-_.])(preprod|pre-prod|pprod)([\s-_.]|$)`)},
 	{"prod", regexp.MustCompile(`(?i)(^|[\s-_.])(prod|production|prd)([\s-_.]|$)`)},
 	{"staging", regexp.MustCompile(`(?i)(^|[\s-_.])(staging|stage|stg)([\s-_.]|$)`)},
+	{"uat", regexp.MustCompile(`(?i)(^|[\s-_.])(uat|recette)([\s-_.]|$)`)},
 	{"dev", regexp.MustCompile(`(?i)(^|[\s-_.])(dev|development|develop)([\s-_.]|$)`)},
-	{"test", regexp.MustCompile(`(?i)(^|[\s-_.])(test|qa|uat|recette)([\s-_.]|$)`)},
+	{"test", regexp.MustCompile(`(?i)(^|[\s-_.])(test|qa)([\s-_.]|$)`)},
 	{"sandbox", regexp.MustCompile(`(?i)(^|[\s-_.])(sandbox|sbx|lab)([\s-_.]|$)`)},
 	{"local", regexp.MustCompile(`(?i)(^|[\s-_.])(local|kind|k3d|k3s|minikube|docker-desktop)([\s-_.]|$)`)},
 }
 
 func Default() *Config {
+	requireEnv := true
 	return &Config{
 		Kube: Kube{
+			Environments:      []string{"dev", "uat", "prod"},
+			RequireEnv:        &requireEnv,
 			Concurrency:       12,
 			RequestTimeout:    Duration(10 * time.Second),
 			CacheTTL:          Duration(20 * time.Second),
@@ -97,12 +101,13 @@ func Load(explicitPath string) (*Config, string, error) {
 }
 
 func (c *Config) Normalize() {
-	if c.Kube.Concurrency <= 0 {
-		c.Kube.Concurrency = 12
+	if c.Kube.Concurrency < 0 {
+		c.Kube.Concurrency = 0
 	}
 	if c.Kube.Concurrency > 256 {
 		c.Kube.Concurrency = 256
 	}
+	c.Kube.Environments = normalizeEnvironments(c.Kube.Environments)
 	if c.Kube.RequestTimeout.Get() <= 0 {
 		c.Kube.RequestTimeout = Duration(10 * time.Second)
 	}
@@ -163,12 +168,18 @@ func (c *Config) Normalize() {
 				continue
 			}
 			provider.Type = strings.ToLower(strings.TrimSpace(provider.Type))
+			if provider.Type == "" {
+				provider.Type = id
+			}
 			provider.BaseURL = strings.TrimRight(strings.TrimSpace(provider.BaseURL), "/")
 			provider.Username = strings.TrimSpace(provider.Username)
 			provider.UsernameEnv = strings.TrimSpace(provider.UsernameEnv)
+			provider.Token = strings.TrimSpace(provider.Token)
 			provider.TokenEnv = strings.TrimSpace(provider.TokenEnv)
 			provider.AuthScheme = strings.ToLower(strings.TrimSpace(provider.AuthScheme))
 			provider.Keywords = cleanList(provider.Keywords)
+			provider.Projects = cleanList(provider.Projects)
+			provider.Groups = cleanList(provider.Groups)
 			if provider.Defaults != nil {
 				defaults := make(map[string]string, len(provider.Defaults))
 				for key, value := range provider.Defaults {
@@ -276,6 +287,8 @@ func (c *Config) Normalize() {
 		c.Packages.TagLimit = 50
 	}
 	c.Sources.Disabled = normalizeDisabled(c.Sources.Disabled)
+	c.Apps = normalizeApps(c.Apps)
+	normalizeDiagnostics(&c.Diagnostics)
 	c.Packages.Images = cleanList(c.Packages.Images)
 	for i := range c.Packages.Registries {
 		registry := &c.Packages.Registries[i]
@@ -744,6 +757,30 @@ func writeConfigNode(configPath string, doc *yaml.Node, includeHeader bool) erro
 	return nil
 }
 
+func normalizeEnvironments(values []string) []string {
+	if len(values) == 0 {
+		return []string{"dev", "uat", "prod"}
+	}
+	out := make([]string, 0, len(values))
+	seen := map[string]bool{}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		key := strings.ToLower(value)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, value)
+	}
+	if len(out) == 0 {
+		return []string{"dev", "uat", "prod"}
+	}
+	return out
+}
+
 func firstNonEmpty(values ...string) string {
 	for _, v := range values {
 		if v != "" {
@@ -770,7 +807,9 @@ kube:
   kubeconfigs: []
   include_contexts: []      # glob patterns, empty = all contexts
   exclude_contexts: []      # e.g. ["*-readonly", "old-*"]
-  concurrency: 12           # parallel clusters
+  environments: [dev, uat, prod] # environments offered by --env / the TUI
+  require_env: true         # force an environment before scanning contexts
+  concurrency: 12           # max contexts scanned at once (0 = all, risky)
   request_timeout: 10s
   cache_ttl: 20s            # repeat searches are instant within this window
   all_namespaces: true
@@ -797,6 +836,27 @@ servers: []
 #    metrics_url: "http://sup-uat-01:9100/metrics"
 #    health_url: "http://sup-uat-01:8080/healthz"
 
+# Application diagnostics. hop derives probes from port/health_url/log_path and
+# runs every app and probe in parallel. Add explicit probes for custom checks.
+apps: []
+#  - name: checkout-api
+#    env: prod
+#    host: 127.0.0.1
+#    port: 8080
+#    health_url: "http://127.0.0.1:8080/healthz"
+#    log_path: /var/log/checkout/app.log
+#    log_pattern: '(?i)\b(error|exception|fatal|panic)\b'
+#    log_since: 15m
+#    probes:
+#      - id: queue
+#        type: command
+#        title: Worker queue
+#        command: "systemctl is-active checkout-worker"
+#        severity: critical
+#        expect:
+#          exit_code: 0
+#        remedy: "Restart checkout-worker and check its logs."
+
 # Browser shortcuts for 'hop link'. Keywords are matched against the command
 # arguments, so 'hop link jira' or 'hop link ticket' opens the same URL.
 shortcuts:
@@ -811,29 +871,21 @@ shortcuts:
     url: "https://jira.example.com"
 
 # Issue providers. 'hop issue OPS-123' opens a ticket, 'hop issue new' creates
-# one. If several providers match, hop prompts a menu. Tokens come from the
-# environment and are never stored in this file.
+# one. Only base_url, token and projects are required; type and auth are
+# inferred. Jira Cloud also needs your account email in username.
 issues:
   default_provider: ""
 providers: {}
 #  jira:
-#    type: jira
 #    base_url: "https://company.atlassian.net"
-#    username_env: JIRA_USER
-#    token_env: JIRA_TOKEN
-#    auth_scheme: basic   # basic (Cloud) or bearer (PAT / Server)
-#    keywords: [jira, ticket, bug]
-#    defaults:
-#      project: OPS
-#      issue_type: Task
+#    username: "me@example.com"   # omit for a Server/DC PAT
+#    token: "..."                 # or token_env: JIRA_TOKEN
+#    projects: [OPS, DEV]
 #  gitlab:
-#    type: gitlab
 #    base_url: "https://gitlab.example.com"
-#    token_env: GITLAB_TOKEN
-#    auth_scheme: private-token   # private-token or bearer
-#    keywords: [gitlab, ticket, bug]
-#    defaults:
-#      project: group/project
+#    token: "..."                 # or token_env: GITLAB_TOKEN
+#    projects: [group/app, group/api]
+#    groups: [platform]           # optional: all projects in a group
 
 # Local Docker/Podman containers for 'hop containers' and the cockpit source.
 # Empty engines = auto-detect installed 'docker' and 'podman' commands.
@@ -878,9 +930,9 @@ workspaces:
         url: "https://grafana.prod.example.com"
       loki:
         url: "https://loki.prod.example.com"
-  - context: "*-staging-*"
-    env: staging
-    display: "STAGING"
+  - context: "*-uat-*"
+    env: uat
+    display: "UAT"
   - context: "*-dev-*"
     env: dev
     display: "DEV"

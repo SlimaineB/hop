@@ -538,7 +538,7 @@ func (s *shortcutSource) Selectors() []string {
 
 func (s *shortcutSource) Search(_ context.Context, query plugin.Query) (plugin.Result, error) {
 	terms := query.WithoutSelectors(s.Selectors()...).Terms
-	if len(terms) == 0 {
+	if len(terms) == 0 && !queryIncludesSource(query, s.ID()) {
 		return plugin.Result{ID: s.ID(), Title: s.Title(), Kind: s.Kind()}, nil
 	}
 	hits := config.MatchShortcuts(s.shortcuts, terms)
@@ -611,6 +611,15 @@ func imageName(repository string) string {
 		return repository[slash+1:]
 	}
 	return repository
+}
+
+func queryIncludesSource(query plugin.Query, id string) bool {
+	for _, source := range query.Sources {
+		if strings.EqualFold(strings.TrimSpace(source), id) {
+			return true
+		}
+	}
+	return false
 }
 
 func boolString(value bool) string {

@@ -102,6 +102,12 @@ Prefer the explicit categories when possible:
   hop pkg <terms...>   search container images and registries
   hop link [terms...]  open browser shortcuts (TUI with no terms)
   hop issue <key...>   open, search or create tickets
+  hop diag pod <terms>  diagnose a pod and its related resources
+  hop diag vm NAME      diagnose a VM/server
+  hop diag apps         live app-probe TUI in a terminal, table with --table
+  hop diag app NAME     diagnose one configured application
+  hop demo             full local demo without Kubernetes or external services
+  hop features         list, enable or disable optional features
 
 Provider aliases are generated from the config, so 'hop jira OPS-123'
 works without a --provider flag.
@@ -113,7 +119,9 @@ Examples:
   hop vm supervision uat
   hop link grafana
   hop issue OPS-123
-  hop jira new "Pod api crashloop"`,
+  hop jira new "Pod api crashloop"
+  hop demo
+  hop features disable pods tickets`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args:          cobra.ArbitraryArgs,
@@ -138,6 +146,11 @@ Examples:
 				return a.runServerTUI(serverService, cfg, query)
 			}
 
+			if len(args) > 0 {
+				if err := requireFeature(cfg, "pods", "Kubernetes pods"); err != nil {
+					return err
+				}
+			}
 			service, err := app.New(cfg)
 			if err != nil {
 				return err
@@ -149,6 +162,9 @@ Examples:
 			}
 
 			if !term.IsTerminal(int(os.Stdout.Fd())) || !term.IsTerminal(int(os.Stdin.Fd())) {
+				if _, err := a.resolveEnv(cfg, query, false); err != nil {
+					return err
+				}
 				return a.printSearch(cmd, service, query, outputTable)
 			}
 			return a.runTUI(service, cfg, query)
@@ -161,13 +177,15 @@ Examples:
 	root.Flags().BoolVar(&a.flags.refresh, "refresh", false, "force a refresh of all clusters")
 	root.Flags().BoolVar(&providerPrint, "print", false, "print the URL instead of opening the browser for provider aliases")
 	root.Flags().DurationVar(&a.flags.timeout, "timeout", 0, "per-cluster request timeout")
-	root.Flags().IntVar(&a.flags.concurrency, "concurrency", 0, "number of clusters queried in parallel")
+	root.Flags().IntVar(&a.flags.concurrency, "concurrency", -1, "max clusters queried in parallel (-1 = config, 0 = all selected)")
 
 	root.AddCommand(
+		a.newDemoCommand(),
 		a.newAllCommand(),
 		a.newGitCommand(),
 		a.newPkgCommand(),
 		a.newPodCommand(),
+		a.newDiagCommand(),
 		a.newSearchCommand(),
 		a.newWebCommand(),
 		a.newServersCommand(),
@@ -177,6 +195,7 @@ Examples:
 		a.newLinkCommand(),
 		a.newIssueCommand(),
 		a.newContextsCommand(),
+		a.newFeaturesCommand(),
 		a.newConfigCommand(),
 		a.newCacheCommand(),
 		a.newVersionCommand(),
@@ -188,7 +207,7 @@ func addFilterFlags(cmd *cobra.Command, a *App) {
 	flags := cmd.Flags()
 	flags.StringArrayVar(&a.flags.contexts, "context", nil, "restrict to one or more contexts (repeatable)")
 	flags.StringArrayVar(&a.flags.namespaces, "namespace", nil, "restrict to one or more namespaces (repeatable)")
-	flags.StringVar(&a.flags.env, "env", "", "restrict to an environment (prod, staging, dev...)")
+	flags.StringVar(&a.flags.env, "env", "", "select an environment (dev/uat/prod by default; all scans every context)")
 	flags.IntVar(&a.flags.limit, "limit", 0, "maximum number of results")
 	flags.Float64Var(&a.flags.minScore, "min-score", 0, "minimum relevance score (0-1), overrides search.min_score")
 }
@@ -210,7 +229,7 @@ func applyRuntimeOverrides(cfg *config.Config, flags runtimeFlags) {
 	if flags.timeout > 0 {
 		cfg.Kube.RequestTimeout = config.Duration(flags.timeout)
 	}
-	if flags.concurrency > 0 {
+	if flags.concurrency >= 0 {
 		cfg.Kube.Concurrency = flags.concurrency
 	}
 	if flags.minScore > 0 {

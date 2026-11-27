@@ -98,15 +98,17 @@ func (l *webLauncher) ensure() (string, error) {
 		backend = l.svc
 	}
 	server, err := web.New(backend, web.Options{
-		Bind:      l.cfg.UI.Bind,
-		Port:      l.cfg.UI.Port,
-		Theme:     l.cfg.UI.Theme,
-		Servers:   l.servers,
-		Shortcuts: shortcutsOrNil(l.cfg),
-		LiveLimit: l.cfg.Search.LiveLimit,
-		Registry:  l.plugins,
-		Stats:     l.stats,
-		Dashboard: l.dashboard,
+		Bind:        l.cfg.UI.Bind,
+		Port:        l.cfg.UI.Port,
+		Theme:       l.cfg.UI.Theme,
+		Servers:     l.servers,
+		Shortcuts:   shortcutsOrNil(l.cfg),
+		LiveLimit:   l.cfg.Search.LiveLimit,
+		Registry:    l.plugins,
+		Stats:       l.stats,
+		Dashboard:   l.dashboard,
+		Apps:        l.cfg.Apps,
+		Diagnostics: l.cfg.Diagnostics,
 	})
 	if err != nil {
 		return "", err

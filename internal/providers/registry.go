@@ -25,7 +25,7 @@ func (r *Registry) Register(kind string, factory Factory) {
 func (r *Registry) Build(id string, cfg config.ProviderConfig) (TicketProvider, error) {
 	kind := cfg.Type
 	if kind == "" {
-		return nil, fmt.Errorf("provider %q: type is required", id)
+		kind = id
 	}
 	factory, ok := r.factories[kind]
 	if !ok {

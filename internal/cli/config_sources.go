@@ -34,48 +34,50 @@ func (a *App) newConfigSourcesCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			rows := sourceRows(cfg)
-			if asJSON {
-				return json.NewEncoder(cmd.OutOrStdout()).Encode(map[string]any{
-					"config":   path,
-					"sources":  rows,
-					"disabled": cfg.Sources.Disabled,
-				})
-			}
-			fmt.Fprintf(cmd.OutOrStdout(), "config: %s\n\n", path)
-			writer := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
-			fmt.Fprintln(writer, "SOURCE\tSTATUS\tSELECTORS\tDETAILS")
-			for _, row := range rows {
-				status := "on"
-				if !row.Enabled {
-					status = "off"
-				}
-				selectors := "-"
-				if len(row.Selectors) > 0 {
-					selectors = strings.Join(row.Selectors, ",")
-				}
-				fmt.Fprintf(writer, "%s\t%s\t%s\t%s\n", row.ID, status, selectors, row.Detail)
-			}
-			if err := writer.Flush(); err != nil {
-				return err
-			}
-			if len(cfg.Sources.Disabled) > 0 {
-				fmt.Fprintf(cmd.OutOrStdout(), "\ndisabled: %s\n", strings.Join(cfg.Sources.Disabled, ", "))
-			}
-			fmt.Fprintln(cmd.OutOrStdout(), "\ntoggle with: hop config enable SOURCE | hop config disable SOURCE")
-			return nil
+			return writeSourceRows(cmd, cfg, path, asJSON)
 		},
 	}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "JSON output")
 	return cmd
 }
 
+func writeSourceRows(cmd *cobra.Command, cfg *config.Config, path string, asJSON bool) error {
+	rows := sourceRows(cfg)
+	if asJSON {
+		return json.NewEncoder(cmd.OutOrStdout()).Encode(map[string]any{
+			"config":   path,
+			"sources":  rows,
+			"disabled": cfg.Sources.Disabled,
+		})
+	}
+	fmt.Fprintf(cmd.OutOrStdout(), "config: %s\n\n", path)
+	writer := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
+	fmt.Fprintln(writer, "SOURCE\tSTATUS\tSELECTORS\tDETAILS")
+	for _, row := range rows {
+		status := "on"
+		if !row.Enabled {
+			status = "off"
+		}
+		selectors := "-"
+		if len(row.Selectors) > 0 {
+			selectors = strings.Join(row.Selectors, ",")
+		}
+		fmt.Fprintf(writer, "%s\t%s\t%s\t%s\n", row.ID, status, selectors, row.Detail)
+	}
+	if err := writer.Flush(); err != nil {
+		return err
+	}
+	if len(cfg.Sources.Disabled) > 0 {
+		fmt.Fprintf(cmd.OutOrStdout(), "\ndisabled: %s\n", strings.Join(cfg.Sources.Disabled, ", "))
+	}
+	fmt.Fprintln(cmd.OutOrStdout(), "\ntoggle with: hop features enable SOURCE | hop features disable SOURCE")
+	return nil
+}
+
 func (a *App) newConfigToggleCommand(enabled bool) *cobra.Command {
 	verb := "enable"
-	past := "enabled"
 	if !enabled {
 		verb = "disable"
-		past = "disabled"
 	}
 	return &cobra.Command{
 		Use:   verb + " SOURCE [SOURCE...]",
@@ -83,33 +85,41 @@ func (a *App) newConfigToggleCommand(enabled bool) *cobra.Command {
 		Long: capitalize(verb) + ` search sources without deleting their configuration.
 
 Examples:
-  hop config enable pod
-  hop config disable tickets
-  hop config enable git pkg
-  hop config disable my-external-plugin`,
+  hop features enable pod
+  hop features disable tickets
+  hop features enable git pkg
+  hop features disable my-external-plugin`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, path, err := config.Load(a.configPath)
-			if err != nil {
-				return err
-			}
-			known := knownSources(cfg)
-			for _, raw := range args {
-				id := config.CanonicalSource(raw)
-				if id == "" {
-					return fmt.Errorf("source id is required")
-				}
-				if !known[id] {
-					return fmt.Errorf("unknown source %q; known: %s", raw, strings.Join(sortedSet(known), ", "))
-				}
-				if _, err := config.UpdateSourceEnabled(path, id, enabled); err != nil {
-					return err
-				}
-				fmt.Fprintf(cmd.OutOrStdout(), "source %s %s\n", id, past)
-			}
-			return nil
+			return a.toggleSources(cmd, args, enabled)
 		},
 	}
+}
+
+func (a *App) toggleSources(cmd *cobra.Command, args []string, enabled bool) error {
+	cfg, path, err := config.Load(a.configPath)
+	if err != nil {
+		return err
+	}
+	past := "enabled"
+	if !enabled {
+		past = "disabled"
+	}
+	known := knownSources(cfg)
+	for _, raw := range args {
+		id := config.CanonicalSource(raw)
+		if id == "" {
+			return fmt.Errorf("source id is required")
+		}
+		if !known[id] {
+			return fmt.Errorf("unknown source %q; known: %s", raw, strings.Join(sortedSet(known), ", "))
+		}
+		if _, err := config.UpdateSourceEnabled(path, id, enabled); err != nil {
+			return err
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "source %s %s\n", id, past)
+	}
+	return nil
 }
 
 func sourceRows(cfg *config.Config) []sourceRow {

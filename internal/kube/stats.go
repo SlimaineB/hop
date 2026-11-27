@@ -136,7 +136,7 @@ type rawSummary struct {
 }
 
 func (p *ClientGoProvider) GetPodStats(ctx context.Context, ref PodRef, node string) (*PodStats, error) {
-	client, err := p.client(ref.Context)
+	client, err := p.client(ctx, ref.Context)
 	if err != nil {
 		return nil, err
 	}

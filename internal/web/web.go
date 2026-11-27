@@ -20,6 +20,7 @@ import (
 	"github.com/SlimaineB/hop/internal/app"
 	"github.com/SlimaineB/hop/internal/config"
 	"github.com/SlimaineB/hop/internal/dashboard"
+	"github.com/SlimaineB/hop/internal/diag"
 	"github.com/SlimaineB/hop/internal/kube"
 	"github.com/SlimaineB/hop/internal/plugin"
 	"github.com/SlimaineB/hop/internal/search"
@@ -41,24 +42,27 @@ type Backend interface {
 }
 
 type Options struct {
-	Bind      string
-	Port      int
-	Theme     string
-	Servers   *servers.Service
-	Shortcuts []config.ShortcutConfig
-	LiveLimit int
-	Registry  *plugin.Registry
-	Stats     func() app.Stats
-	Dashboard *dashboard.Service
+	Bind        string
+	Port        int
+	Theme       string
+	Servers     *servers.Service
+	Shortcuts   []config.ShortcutConfig
+	LiveLimit   int
+	Registry    *plugin.Registry
+	Stats       func() app.Stats
+	Dashboard   *dashboard.Service
+	Apps        []config.AppConfig
+	Diagnostics config.Diagnostics
 }
 
 type Server struct {
-	backend   Backend
-	options   Options
-	registry  *plugin.Registry
-	dashboard *dashboard.Service
-	tmpl      *template.Template
-	mux       *http.ServeMux
+	backend    Backend
+	options    Options
+	registry   *plugin.Registry
+	dashboard  *dashboard.Service
+	diagEngine *diag.Engine
+	tmpl       *template.Template
+	mux        *http.ServeMux
 
 	mu      sync.Mutex
 	http    *http.Server
@@ -113,13 +117,18 @@ func New(backend Backend, options Options) (*Server, error) {
 	if registry == nil {
 		registry = plugin.NewRegistry()
 	}
+	diagEngine, err := diag.NewEngine(options.Diagnostics)
+	if err != nil {
+		return nil, fmt.Errorf("diagnostics config: %w", err)
+	}
 	server := &Server{
-		backend:   backend,
-		options:   options,
-		registry:  registry,
-		dashboard: options.Dashboard,
-		tmpl:      tmpl,
-		mux:       http.NewServeMux(),
+		backend:    backend,
+		options:    options,
+		registry:   registry,
+		dashboard:  options.Dashboard,
+		diagEngine: diagEngine,
+		tmpl:       tmpl,
+		mux:        http.NewServeMux(),
 	}
 	server.routes()
 	return server, nil
@@ -134,16 +143,27 @@ func (s *Server) routes() {
 
 	s.mux.HandleFunc("/", s.handleDashboard)
 	s.mux.HandleFunc("/dashboard", s.handleDashboard)
+	s.mux.HandleFunc("/kubernetes", s.handleDomain)
+	s.mux.HandleFunc("/containers", s.handleDomain)
+	s.mux.HandleFunc("/git", s.handleDomain)
+	s.mux.HandleFunc("/packages", s.handleDomain)
+	s.mux.HandleFunc("/tickets", s.handleDomain)
 	s.mux.HandleFunc("/search", s.handleIndex)
+	s.mux.HandleFunc("/pods", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/kubernetes", http.StatusMovedPermanently)
+	})
 	s.mux.HandleFunc("/pod", s.handlePod)
 	s.mux.HandleFunc("/server", s.handleServer)
 	s.mux.HandleFunc("/servers", s.handleServers)
+	s.mux.HandleFunc("/diagnostics", s.handleDiagnostics)
 	s.mux.Handle("/static/", http.StripPrefix("/static/", staticHandler))
 	s.mux.HandleFunc("/api/dashboard", s.handleAPIDashboard)
 	s.mux.HandleFunc("/api/dashboard/servers", s.handleAPIDashboardServers)
+	s.mux.HandleFunc("/api/diagnostics/apps", s.handleAPIDiagnosticsApps)
 	s.mux.HandleFunc("/api/search", s.handleAPISearch)
 	s.mux.HandleFunc("/api/unified", s.handleAPIUnified)
 	s.mux.HandleFunc("/api/pod", s.handleAPIPod)
+	s.mux.HandleFunc("/api/pod/diag", s.handleAPIPodDiag)
 	s.mux.HandleFunc("/api/pod/stats", s.handleAPIPodStats)
 	s.mux.HandleFunc("/api/pod/logs", s.handleAPIPodLogs)
 	s.mux.HandleFunc("/api/servers", s.handleAPIServers)

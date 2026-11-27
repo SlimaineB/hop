@@ -27,6 +27,7 @@ type Provider struct {
 	token      string
 	authScheme string
 	keywords   []string
+	projects   []string
 	project    string
 	issueType  string
 	httpClient *http.Client
@@ -38,11 +39,14 @@ func New(id string, cfg config.ProviderConfig) (providers.TicketProvider, error)
 	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
 		return nil, fmt.Errorf("Jira provider %q: invalid base_url %q", id, cfg.BaseURL)
 	}
-	tokenEnv := cfg.TokenEnv
-	if tokenEnv == "" {
-		tokenEnv = "JIRA_TOKEN"
+	token := strings.TrimSpace(cfg.Token)
+	if token == "" {
+		tokenEnv := cfg.TokenEnv
+		if tokenEnv == "" {
+			tokenEnv = "JIRA_TOKEN"
+		}
+		token = strings.TrimSpace(os.Getenv(tokenEnv))
 	}
-	token := os.Getenv(tokenEnv)
 	username := cfg.Username
 	usernameEnv := cfg.UsernameEnv
 	if username == "" && usernameEnv == "" {
@@ -69,7 +73,11 @@ func New(id string, cfg config.ProviderConfig) (providers.TicketProvider, error)
 	if timeout <= 0 {
 		timeout = 15 * time.Second
 	}
-	project := cfg.Defaults["project"]
+	projects := cleanProjects(cfg.Projects)
+	project := strings.TrimSpace(cfg.Defaults["project"])
+	if project == "" && len(projects) == 1 {
+		project = projects[0]
+	}
 	issueType := cfg.Defaults["issue_type"]
 	if issueType == "" {
 		issueType = "Task"
@@ -81,6 +89,7 @@ func New(id string, cfg config.ProviderConfig) (providers.TicketProvider, error)
 		token:      token,
 		authScheme: authScheme,
 		keywords:   append([]string(nil), cfg.Keywords...),
+		projects:   projects,
 		project:    project,
 		issueType:  issueType,
 		httpClient: &http.Client{Timeout: timeout},
@@ -129,10 +138,7 @@ func (p *Provider) Search(ctx context.Context, query string, limit int) ([]provi
 	if limit > 50 {
 		limit = 50
 	}
-	jql := "ORDER BY updated DESC"
-	if strings.TrimSpace(query) != "" {
-		jql = `text ~ "` + escapeJQL(query) + `" ORDER BY updated DESC`
-	}
+	jql := p.jql(query)
 	endpoint := p.baseURL + "/rest/api/2/search?jql=" + url.QueryEscape(jql) +
 		"&maxResults=" + fmt.Sprintf("%d", limit) + "&fields=summary,status,updated"
 	var response struct {
@@ -207,7 +213,7 @@ func (p *Provider) Create(ctx context.Context, draft providers.TicketDraft) (pro
 		issueType = p.issueType
 	}
 	if project == "" {
-		return providers.Ticket{}, fmt.Errorf("Jira provider %q: project is required (set providers.%s.defaults.project)", p.id, p.id)
+		return providers.Ticket{}, fmt.Errorf("Jira provider %q: project is required (set providers.%s.projects or pass --project)", p.id, p.id)
 	}
 	payload := map[string]any{
 		"fields": map[string]any{
@@ -252,7 +258,7 @@ func (p *Provider) do(ctx context.Context, method, endpoint string, body any, ou
 		request.Header.Set("Content-Type", "application/json")
 	}
 	if p.token == "" {
-		return fmt.Errorf("Jira provider %q: token is not set (configure token_env)", p.id)
+		return fmt.Errorf("Jira provider %q: token is not set (configure token or token_env)", p.id)
 	}
 	switch p.authScheme {
 	case "basic":
@@ -277,6 +283,38 @@ func (p *Provider) do(ctx context.Context, method, endpoint string, body any, ou
 		return fmt.Errorf("decode Jira response: %w", err)
 	}
 	return nil
+}
+
+func (p *Provider) jql(query string) string {
+	clauses := make([]string, 0, 2)
+	if value := strings.TrimSpace(query); value != "" {
+		clauses = append(clauses, `text ~ "`+escapeJQL(value)+`"`)
+	}
+	if len(p.projects) > 0 {
+		projects := make([]string, len(p.projects))
+		for i, project := range p.projects {
+			projects[i] = `"` + escapeJQL(project) + `"`
+		}
+		clauses = append(clauses, "project IN ("+strings.Join(projects, ",")+")")
+	}
+	if len(clauses) == 0 {
+		return "ORDER BY updated DESC"
+	}
+	return strings.Join(clauses, " AND ") + " ORDER BY updated DESC"
+}
+
+func cleanProjects(values []string) []string {
+	projects := make([]string, 0, len(values))
+	seen := map[string]bool{}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		projects = append(projects, value)
+	}
+	return projects
 }
 
 func escapeJQL(value string) string {

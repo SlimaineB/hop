@@ -132,3 +132,47 @@ func TestProviderRejectsInvalidBaseURL(t *testing.T) {
 		t.Fatal("expected error")
 	}
 }
+
+func TestProviderMinimalConfigSearchesProjectsAndGroups(t *testing.T) {
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("PRIVATE-TOKEN") != "secret" {
+			t.Fatalf("unexpected token: %q", r.Header.Get("PRIVATE-TOKEN"))
+		}
+		if r.URL.Query().Get("search") != "timeout" {
+			t.Fatalf("unexpected search: %s", r.URL.Query().Get("search"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/api/v4/projects/lab/hop/issues":
+			_, _ = w.Write([]byte(`[{"iid":1,"project_id":7,"title":"Hop timeout","state":"opened","web_url":"` + server.URL + `/lab/hop/-/issues/1","updated_at":"2026-11-25T10:00:00Z","references":{"full":"lab/hop#1"}}]`))
+		case "/api/v4/projects/lab/other/issues":
+			_, _ = w.Write([]byte(`[{"iid":3,"project_id":9,"title":"Other timeout","state":"opened","web_url":"` + server.URL + `/lab/other/-/issues/3","updated_at":"2026-11-25T12:00:00Z","references":{"full":"lab/other#3"}}]`))
+		case "/api/v4/groups/platform/issues":
+			_, _ = w.Write([]byte(`[{"iid":2,"project_id":8,"title":"Platform timeout","state":"opened","web_url":"` + server.URL + `/platform/api/-/issues/2","updated_at":"2026-11-25T11:00:00Z","references":{"full":"platform/api#2"}}]`))
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+	}))
+	defer server.Close()
+
+	provider, err := New("gitlab", config.ProviderConfig{
+		BaseURL:  server.URL,
+		Token:    "secret",
+		Projects: []string{"lab/hop", "lab/other"},
+		Groups:   []string{"platform"},
+	})
+	if err != nil {
+		t.Fatalf("new provider: %v", err)
+	}
+	tickets, err := provider.Search(context.Background(), "timeout", 10)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(tickets) != 3 {
+		t.Fatalf("tickets = %+v", tickets)
+	}
+	if tickets[0].Key != "lab/other#3" || tickets[1].Key != "platform/api#2" || tickets[2].Key != "lab/hop#1" {
+		t.Fatalf("unexpected order: %+v", tickets)
+	}
+}

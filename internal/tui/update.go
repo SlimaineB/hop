@@ -26,6 +26,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
 
+	case localSearchTickMsg:
+		if msg.seq != m.localSeq {
+			return m, nil
+		}
+		return m, m.localSearchCmd()
+
 	case searchMsg:
 		if msg.local {
 			if msg.seq != m.localSeq {
@@ -84,6 +90,33 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.loadStatsCmd()
 
+	case diagMsg:
+		if msg.seq != m.diagSeq {
+			return m, nil
+		}
+		m.diagLoading = false
+		if msg.id != m.selectedKey() {
+			return m, nil
+		}
+		m.diagErr = msg.err
+		m.diag = msg.report
+		if msg.err != nil {
+			m.status = "diagnostics: " + msg.err.Error()
+		} else {
+			m.status = "diagnostics: " + string(msg.report.Verdict)
+		}
+		return m, nil
+
+	case diagTickMsg:
+		if msg.seq != m.diagTickSeq || !m.diagMode {
+			return m, nil
+		}
+		next := m.scheduleDiagTick()
+		if !m.diagLive || m.diagLoading {
+			return m, next
+		}
+		return m, tea.Batch(next, m.startDiag())
+
 	case logsMsg:
 		if msg.seq != m.logsSeq || msg.id != m.logsID {
 			return m, nil
@@ -132,6 +165,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.metricsMode {
 		return m.handleMetricsKey(key)
 	}
+	if m.diagMode {
+		return m.handleDiagKey(key)
+	}
 	if m.editing {
 		switch key {
 		case "enter", "tab":
@@ -144,7 +180,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.input, cmd = m.input.Update(msg)
 		if m.input.Value() != before {
 			m.localSeq++
-			return m, tea.Batch(cmd, m.localSearchCmd())
+			seq := m.localSeq
+			return m, tea.Batch(cmd, tea.Tick(20*time.Millisecond, func(time.Time) tea.Msg {
+				return localSearchTickMsg{seq: seq}
+			}))
 		}
 		return m, cmd
 	}
@@ -158,7 +197,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "/", "i":
 		m.startEditing()
 		return m, nil
-	case "up", "k":
+	case "up", "ctrl+k":
 		return m, m.moveCursor(-1)
 	case "down", "j":
 		return m, m.moveCursor(1)
@@ -178,9 +217,25 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.openWebCmd()
 	case "m":
 		return m, m.toggleMetrics()
+	case "t":
+		if _, ok := m.selected(); !ok {
+			m.status = "no pod selected"
+			return m, nil
+		}
+		m.enterDiagMode()
+		return m, tea.Batch(m.spinner.Tick, m.startDiag(), m.scheduleDiagTick())
 	case "l":
 		return m, m.toggleLogs()
-	case "s":
+	case "s", "e":
+		hit, ok, ready := m.actionOptions()
+		if !ok || !ready {
+			return m, nil
+		}
+		cmd := actions.Exec(hit.Pod, m.svc.ActionOptionsFor(m.timeRange))
+		return m, tea.ExecProcess(cmd, func(err error) tea.Msg {
+			return actionDoneMsg{label: "shell", err: err}
+		})
+	case "k", "K":
 		hit, ok, ready := m.actionOptions()
 		if !ok || !ready {
 			return m, nil
@@ -188,15 +243,6 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		cmd := actions.K9s(hit.Pod, m.svc.ActionOptionsFor(m.timeRange))
 		return m, tea.ExecProcess(cmd, func(err error) tea.Msg {
 			return actionDoneMsg{label: "k9s", err: err}
-		})
-	case "e":
-		hit, ok, ready := m.actionOptions()
-		if !ok || !ready {
-			return m, nil
-		}
-		cmd := actions.Exec(hit.Pod, m.svc.ActionOptionsFor(m.timeRange))
-		return m, tea.ExecProcess(cmd, func(err error) tea.Msg {
-			return actionDoneMsg{label: "exec", err: err}
 		})
 	case "L":
 		hit, ok, ready := m.actionOptions()
@@ -250,14 +296,14 @@ func (m Model) handleLogsKey(key string) (tea.Model, tea.Cmd) {
 		return m, m.loadLogsCmd()
 	case "m":
 		return m, m.toggleMetrics()
-	case "e":
+	case "s", "e":
 		hit, ok, ready := m.actionOptions()
 		if !ok || !ready {
 			return m, nil
 		}
 		cmd := actions.Exec(hit.Pod, m.svc.ActionOptionsFor(m.timeRange))
 		return m, tea.ExecProcess(cmd, func(err error) tea.Msg {
-			return actionDoneMsg{label: "exec", err: err}
+			return actionDoneMsg{label: "shell", err: err}
 		})
 	case "up", "k":
 		if m.logsOffset > 0 {
@@ -296,14 +342,14 @@ func (m Model) handleMetricsKey(key string) (tea.Model, tea.Cmd) {
 		m.logsMode = true
 		m.logsOffset = 0
 		return m, m.loadLogsCmd()
-	case "e":
+	case "s", "e":
 		hit, ok, ready := m.actionOptions()
 		if !ok || !ready {
 			return m, nil
 		}
 		cmd := actions.Exec(hit.Pod, m.svc.ActionOptionsFor(m.timeRange))
 		return m, tea.ExecProcess(cmd, func(err error) tea.Msg {
-			return actionDoneMsg{label: "exec", err: err}
+			return actionDoneMsg{label: "shell", err: err}
 		})
 	case "up", "k":
 		m.metricsOffset = max(0, m.metricsOffset-1)

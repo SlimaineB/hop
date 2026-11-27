@@ -48,11 +48,31 @@ func (e *Engine) Rank(q Query, candidates []Candidate, limit int) []Hit {
 	return e.RankMin(q, candidates, limit, 0)
 }
 
+type preparedTerm struct {
+	raw        string
+	normalized string
+	compact    string
+}
+
+func prepareTerms(terms []string) []preparedTerm {
+	prepared := make([]preparedTerm, len(terms))
+	for i, term := range terms {
+		normalized := normalize(term)
+		prepared[i] = preparedTerm{
+			raw:        term,
+			normalized: normalized,
+			compact:    compact(normalized),
+		}
+	}
+	return prepared
+}
+
 // RankMin ranks candidates and drops scored hits below minScore. A neutral
 // query (no terms) is never filtered, since those hits all score zero.
 func (e *Engine) RankMin(q Query, candidates []Candidate, limit int, minScore float64) []Hit {
+	terms := prepareTerms(q.Terms)
+	neutral := len(terms) == 0
 	hits := make([]Hit, 0, len(candidates))
-	neutral := len(q.Terms) == 0
 	for i := range candidates {
 		c := &candidates[i]
 		if !candidateMatchesFilters(c, q.Filters) {
@@ -62,7 +82,7 @@ func (e *Engine) RankMin(q Query, candidates []Candidate, limit int, minScore fl
 			hits = append(hits, Hit{Candidate: *c})
 			continue
 		}
-		hits = append(hits, scoreCandidate(q, c))
+		hits = append(hits, Hit{Candidate: *c, Score: scoreCandidate(terms, c)})
 	}
 
 	if !neutral {
@@ -85,23 +105,25 @@ func (e *Engine) RankMin(q Query, candidates []Candidate, limit int, minScore fl
 	if limit > 0 && len(hits) > limit {
 		hits = hits[:limit]
 	}
+	if !neutral {
+		for i := range hits {
+			annotateHit(terms, &hits[i])
+		}
+	}
 	return hits
 }
 
-func scoreCandidate(q Query, c *Candidate) Hit {
-	matches := make([]Match, 0, len(q.Terms))
+func scoreCandidate(terms []preparedTerm, c *Candidate) float64 {
 	sum := 0.0
 	matched := 0
 	firstMatchedField := -1
 	allInOne := true
 
-	for _, term := range q.Terms {
-		normalized := normalize(term)
-		compactTerm := compact(normalized)
+	for _, term := range terms {
 		best := 0.0
 		bestIndex := -1
 		for i := range c.Fields {
-			s := c.Fields[i].score(normalized, compactTerm) * c.Fields[i].Weight
+			s := c.Fields[i].score(term.normalized, term.compact) * c.Fields[i].Weight
 			if s > best {
 				best = s
 				bestIndex = i
@@ -118,33 +140,43 @@ func scoreCandidate(q Query, c *Candidate) Hit {
 			allInOne = false
 		}
 		sum += best
+	}
+
+	avg := sum / float64(len(terms))
+	coverage := float64(matched) / float64(len(terms))
+	score := avg * (0.45 + 0.55*coverage)
+	if matched == len(terms) && len(terms) > 1 {
+		score = minFloat(1, score*1.06+0.01)
+	}
+	if allInOne && firstMatchedField >= 0 && matched == len(terms) {
+		score = minFloat(1, score+0.02)
+	}
+	return minFloat(1, score+c.Boost)
+}
+
+func annotateHit(terms []preparedTerm, hit *Hit) {
+	matches := make([]Match, 0, len(terms))
+	for _, term := range terms {
+		best := 0.0
+		bestIndex := -1
+		for i := range hit.Candidate.Fields {
+			s := hit.Candidate.Fields[i].score(term.normalized, term.compact) * hit.Candidate.Fields[i].Weight
+			if s > best {
+				best = s
+				bestIndex = i
+			}
+		}
 		if bestIndex >= 0 && best > 0 {
 			matches = append(matches, Match{
-				Field: c.Fields[bestIndex].Key,
-				Value: c.Fields[bestIndex].Value,
-				Term:  term,
+				Field: hit.Candidate.Fields[bestIndex].Key,
+				Value: hit.Candidate.Fields[bestIndex].Value,
+				Term:  term.raw,
 				Score: best,
 			})
 		}
 	}
-
-	avg := sum / float64(len(q.Terms))
-	coverage := float64(matched) / float64(len(q.Terms))
-	score := avg * (0.45 + 0.55*coverage)
-	if matched == len(q.Terms) && len(q.Terms) > 1 {
-		score = minFloat(1, score*1.06+0.01)
-	}
-	if allInOne && firstMatchedField >= 0 && matched == len(q.Terms) {
-		score = minFloat(1, score+0.02)
-	}
-	score = minFloat(1, score+c.Boost)
-
-	return Hit{
-		Candidate: *c,
-		Score:     score,
-		Matches:   matches,
-		Reasons:   summarizeMatches(matches),
-	}
+	hit.Matches = matches
+	hit.Reasons = summarizeMatches(matches)
 }
 
 func summarizeMatches(matches []Match) []string {

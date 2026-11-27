@@ -13,6 +13,7 @@ import (
 
 	"github.com/SlimaineB/hop/internal/app"
 	"github.com/SlimaineB/hop/internal/config"
+	"github.com/SlimaineB/hop/internal/diag"
 	"github.com/SlimaineB/hop/internal/servers"
 	"github.com/SlimaineB/hop/internal/version"
 )
@@ -26,6 +27,9 @@ func (a *App) newContextsCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, _, err := config.Load(a.configPath)
 			if err != nil {
+				return err
+			}
+			if err := requireFeature(cfg, "pods", "Kubernetes pods"); err != nil {
 				return err
 			}
 			applyRuntimeOverrides(cfg, a.flags)
@@ -118,7 +122,15 @@ func (a *App) newConfigCommand() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				data, err := yaml.Marshal(cfg)
+				redacted := *cfg
+				redacted.Providers = make(map[string]config.ProviderConfig, len(cfg.Providers))
+				for id, provider := range cfg.Providers {
+					if provider.Token != "" {
+						provider.Token = "***"
+					}
+					redacted.Providers[id] = provider
+				}
+				data, err := yaml.Marshal(&redacted)
 				if err != nil {
 					return err
 				}
@@ -139,23 +151,37 @@ func (a *App) newConfigCommand() *cobra.Command {
 				fmt.Fprintf(cmd.OutOrStdout(), "concurrency: %d · timeout: %s · cache: %s\n",
 					cfg.Kube.Concurrency, cfg.Kube.RequestTimeout.Get(), cfg.Kube.CacheTTL.Get())
 				warnings := 0
-				for _, kubeconfig := range resolvedKubeconfigs(cfg) {
-					if _, err := os.Stat(kubeconfig); err != nil {
-						fmt.Fprintf(cmd.ErrOrStderr(), "warning: kubeconfig not found: %s\n", kubeconfig)
-						warnings++
-						continue
-					}
-					fmt.Fprintf(cmd.OutOrStdout(), "kubeconfig: %s\n", kubeconfig)
-				}
-				if cfg.Issues.DefaultProvider != "" {
-					if _, ok := cfg.Providers[cfg.Issues.DefaultProvider]; !ok {
-						fmt.Fprintf(cmd.ErrOrStderr(), "warning: issues.default_provider %q is not configured\n", cfg.Issues.DefaultProvider)
-						warnings++
+				if !cfg.SourceDisabled("pods") {
+					for _, kubeconfig := range resolvedKubeconfigs(cfg) {
+						if _, err := os.Stat(kubeconfig); err != nil {
+							fmt.Fprintf(cmd.ErrOrStderr(), "warning: kubeconfig not found: %s\n", kubeconfig)
+							warnings++
+							continue
+						}
+						fmt.Fprintf(cmd.OutOrStdout(), "kubeconfig: %s\n", kubeconfig)
 					}
 				}
-				for id, provider := range cfg.Providers {
-					if strings.TrimSpace(provider.Type) == "" {
-						fmt.Fprintf(cmd.ErrOrStderr(), "warning: provider %s has no type\n", id)
+				if !cfg.SourceDisabled("tickets") {
+					if cfg.Issues.DefaultProvider != "" {
+						if _, ok := cfg.Providers[cfg.Issues.DefaultProvider]; !ok {
+							fmt.Fprintf(cmd.ErrOrStderr(), "warning: issues.default_provider %q is not configured\n", cfg.Issues.DefaultProvider)
+							warnings++
+						}
+					}
+					for id, provider := range cfg.Providers {
+						if strings.TrimSpace(provider.Type) == "" {
+							fmt.Fprintf(cmd.ErrOrStderr(), "warning: provider %s has no type\n", id)
+							warnings++
+						}
+					}
+				}
+				if _, err := diag.NewEngine(cfg.Diagnostics); err != nil {
+					fmt.Fprintf(cmd.ErrOrStderr(), "warning: diagnostics: %v\n", err)
+					warnings++
+				}
+				for _, app := range cfg.Apps {
+					if len(app.Probes) == 0 && app.Port == 0 && app.HealthURL == "" && app.MetricsURL == "" && app.LogPath == "" {
+						fmt.Fprintf(cmd.ErrOrStderr(), "warning: app %s has no probe; set port, health_url, log_path or probes\n", app.Name)
 						warnings++
 					}
 				}

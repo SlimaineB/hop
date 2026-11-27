@@ -22,6 +22,7 @@
       <span class="badge mono">{{.Host}}{{if .Port}}:{{.Port}}{{end}}</span>
       {{range .Tags}}<span class="badge">{{.}}</span>{{end}}
       {{with $.Check}}<span class="badge">checked {{age .CheckedAt}}</span><span class="badge">net {{networkText .Network}}</span>{{end}}
+      {{with $.Diagnosis}}<span class="badge diag-badge diag-{{.Verdict}}">{{.Verdict}}</span>{{end}}
     </div>
   </div>
   <div class="pod-quick">
@@ -59,6 +60,8 @@
   </article>
 </section>
 {{end}}
+
+{{if $.Diagnosis}}{{template "diagnosis" $.Diagnosis}}{{end}}
 
 <div class="pod-grid">
   <div class="col-main">

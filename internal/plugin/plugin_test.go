@@ -62,6 +62,33 @@ func TestRegistryFiltersBySelector(t *testing.T) {
 	}
 }
 
+func TestRegistryRestrictsToSources(t *testing.T) {
+	pods := &fakeSource{id: "pods", items: []Item{{ID: "p1", Title: "pod"}}}
+	repos := &fakeSource{id: "repos", items: []Item{{ID: "r1", Title: "repo"}}}
+	registry := NewRegistry()
+	_ = registry.Register(pods)
+	_ = registry.Register(repos)
+
+	response := registry.Search(context.Background(), Query{Raw: "api", Limit: 10, Sources: []string{"repos"}})
+	if len(response.Sections) != 1 || response.Sections[0].ID != "repos" {
+		t.Fatalf("sections = %+v", response.Sections)
+	}
+	if pods.network {
+		t.Fatal("pods source should not have been queried")
+	}
+}
+
+func TestRegistryRestrictedSourceCanReturnEverything(t *testing.T) {
+	repos := &fakeSource{id: "repos", items: []Item{{ID: "r1", Title: "repo"}}}
+	registry := NewRegistry()
+	_ = registry.Register(repos)
+
+	response := registry.Search(context.Background(), Query{Raw: "", Limit: 10, Sources: []string{"repos"}})
+	if len(response.Sections) != 1 || response.Total != 1 {
+		t.Fatalf("sections = %+v", response.Sections)
+	}
+}
+
 func TestRegistryLocalAndErrors(t *testing.T) {
 	source := &fakeSource{id: "repos", selectors: []string{"git"}, items: []Item{{ID: "r1", Title: "repo"}}}
 	registry := NewRegistry()

@@ -13,6 +13,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/client-go/tools/clientcmd"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 
 	"github.com/SlimaineB/hop/internal/glob"
 	"github.com/SlimaineB/hop/internal/version"
@@ -33,7 +34,18 @@ type ClientGoProvider struct {
 	contextsLoaded bool
 	contexts       []Context
 	contextsErr    error
-	clients        map[string]*kubernetes.Clientset
+	rawConfig      *clientcmdapi.Config
+	clients        map[string]clientEntry
+
+	tokenMu    sync.Mutex
+	tokens     map[string]awsToken
+	tokenLocks map[string]*sync.Mutex
+	tokenDir   string
+}
+
+type clientEntry struct {
+	client    *kubernetes.Clientset
+	expiresAt time.Time
 }
 
 func NewClientGo(opts Options) *ClientGoProvider {
@@ -41,9 +53,11 @@ func NewClientGo(opts Options) *ClientGoProvider {
 		opts.RequestTimeout = 10 * time.Second
 	}
 	return &ClientGoProvider{
-		rules:   buildLoadingRules(opts.Kubeconfigs),
-		options: opts,
-		clients: map[string]*kubernetes.Clientset{},
+		rules:      buildLoadingRules(opts.Kubeconfigs),
+		options:    opts,
+		clients:    map[string]clientEntry{},
+		tokens:     map[string]awsToken{},
+		tokenLocks: map[string]*sync.Mutex{},
 	}
 }
 
@@ -96,17 +110,19 @@ func (p *ClientGoProvider) Contexts(ctx context.Context) ([]Context, error) {
 	sort.Slice(contexts, func(i, j int) bool { return contexts[i].Name < contexts[j].Name })
 
 	p.contexts = contexts
+	p.rawConfig = &raw
 	if len(contexts) == 0 {
 		p.contextsErr = fmt.Errorf("no Kubernetes context found (kubeconfig: %s)", p.rules.GetDefaultFilename())
 	}
 	return contexts, p.contextsErr
 }
 
-func (p *ClientGoProvider) client(name string) (*kubernetes.Clientset, error) {
+func (p *ClientGoProvider) client(ctx context.Context, name string) (*kubernetes.Clientset, error) {
+	now := time.Now()
 	p.mu.Lock()
-	if client, ok := p.clients[name]; ok {
+	if entry, ok := p.clients[name]; ok && (entry.expiresAt.IsZero() || now.Before(entry.expiresAt)) {
 		p.mu.Unlock()
-		return client, nil
+		return entry.client, nil
 	}
 	p.mu.Unlock()
 
@@ -120,6 +136,21 @@ func (p *ClientGoProvider) client(name string) (*kubernetes.Clientset, error) {
 	restConfig.UserAgent = "hop/" + version.Version
 	restConfig.QPS = 50
 	restConfig.Burst = 100
+	restConfig.ContentType = "application/json"
+	restConfig.AcceptContentTypes = "application/vnd.kubernetes.protobuf,application/json"
+
+	var expiresAt time.Time
+	if execConfig := p.contextExec(name); isAWSExec(execConfig) {
+		token, expiry, err := p.awsToken(ctx, name, execConfig, restConfig.Host)
+		if err != nil {
+			return nil, fmt.Errorf("context %s: %w", name, err)
+		}
+		restConfig.ExecProvider = nil
+		restConfig.AuthProvider = nil
+		restConfig.BearerToken = token
+		restConfig.BearerTokenFile = ""
+		expiresAt = expiry.Add(-time.Minute)
+	}
 
 	client, err := kubernetes.NewForConfig(restConfig)
 	if err != nil {
@@ -127,13 +158,61 @@ func (p *ClientGoProvider) client(name string) (*kubernetes.Clientset, error) {
 	}
 
 	p.mu.Lock()
-	if existing, ok := p.clients[name]; ok {
+	if existing, ok := p.clients[name]; ok && (existing.expiresAt.IsZero() || time.Now().Before(existing.expiresAt)) {
 		p.mu.Unlock()
-		return existing, nil
+		return existing.client, nil
 	}
-	p.clients[name] = client
+	p.clients[name] = clientEntry{client: client, expiresAt: expiresAt}
 	p.mu.Unlock()
 	return client, nil
+}
+
+func (p *ClientGoProvider) contextExec(name string) *clientcmdapi.ExecConfig {
+	p.mu.Lock()
+	raw := p.rawConfig
+	p.mu.Unlock()
+	if raw == nil {
+		loaded, err := p.loadRawConfig()
+		if err != nil {
+			return nil
+		}
+		raw = loaded
+	}
+	kubeCtx := raw.Contexts[name]
+	if kubeCtx == nil {
+		return nil
+	}
+	auth := raw.AuthInfos[kubeCtx.AuthInfo]
+	if auth == nil {
+		return nil
+	}
+	return auth.Exec
+}
+
+func (p *ClientGoProvider) loadRawConfig() (*clientcmdapi.Config, error) {
+	p.mu.Lock()
+	if p.rawConfig != nil {
+		raw := p.rawConfig
+		p.mu.Unlock()
+		return raw, nil
+	}
+	p.mu.Unlock()
+
+	raw, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+		p.rules,
+		&clientcmd.ConfigOverrides{},
+	).RawConfig()
+	if err != nil {
+		return nil, fmt.Errorf("load kubeconfig: %w", err)
+	}
+	p.mu.Lock()
+	if p.rawConfig == nil {
+		p.rawConfig = &raw
+	} else {
+		raw = *p.rawConfig
+	}
+	p.mu.Unlock()
+	return &raw, nil
 }
 
 func (p *ClientGoProvider) ListPods(ctx context.Context, opts ListOptions) (*ListResult, error) {
@@ -157,7 +236,10 @@ func (p *ClientGoProvider) ListPods(ctx context.Context, opts ListOptions) (*Lis
 
 	concurrency := opts.Concurrency
 	if concurrency <= 0 {
-		concurrency = 12
+		concurrency = len(selected)
+	}
+	if concurrency < 1 {
+		concurrency = 1
 	}
 	timeout := opts.Timeout
 	if timeout <= 0 {
@@ -234,7 +316,7 @@ func (p *ClientGoProvider) ListPods(ctx context.Context, opts ListOptions) (*Lis
 }
 
 func (p *ClientGoProvider) listContext(ctx context.Context, c Context, opts ListOptions) ([]Pod, int64, error) {
-	client, err := p.client(c.Name)
+	client, err := p.client(ctx, c.Name)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -485,7 +567,7 @@ func resolveOwners(ctx context.Context, client kubernetes.Interface, pods []Pod)
 }
 
 func (p *ClientGoProvider) GetPod(ctx context.Context, ref PodRef) (*PodDetail, error) {
-	client, err := p.client(ref.Context)
+	client, err := p.client(ctx, ref.Context)
 	if err != nil {
 		return nil, err
 	}

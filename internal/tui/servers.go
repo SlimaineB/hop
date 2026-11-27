@@ -13,13 +13,15 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/SlimaineB/hop/internal/actions"
+	"github.com/SlimaineB/hop/internal/diag"
 	"github.com/SlimaineB/hop/internal/servers"
 )
 
 type ServerOptions struct {
-	Service *servers.Service
-	Initial string
-	OpenWeb func(name, query string) (string, error)
+	Service     *servers.Service
+	Initial     string
+	OpenWeb     func(name, query string) (string, error)
+	Diagnostics *diag.Engine
 }
 
 type ServerModel struct {
@@ -50,6 +52,17 @@ type ServerModel struct {
 	checkSeq  int
 	searchSeq int
 	localSeq  int
+
+	diagnostics *diag.Engine
+	diagMode    bool
+	diagLive    bool
+	diag        *diag.Report
+	diagLoading bool
+	diagErr     error
+	diagName    string
+	diagSeq     int
+	diagTickSeq int
+	diagOffset  int
 }
 
 type serverSearchMsg struct {
@@ -68,6 +81,17 @@ type serverCheckMsg struct {
 	err    error
 }
 
+type serverDiagMsg struct {
+	seq    int
+	name   string
+	report *diag.Report
+	err    error
+}
+
+type serverDiagTickMsg struct {
+	seq int
+}
+
 func NewServers(opts ServerOptions) ServerModel {
 	input := textinput.New()
 	input.Placeholder = "supervision uat vm"
@@ -76,14 +100,16 @@ func NewServers(opts ServerOptions) ServerModel {
 	input.Width = 72
 
 	model := ServerModel{
-		svc:     opts.Service,
-		opts:    opts,
-		query:   strings.TrimSpace(opts.Initial),
-		input:   input,
-		spinner: newSpinner(),
-		width:   120,
-		height:  32,
-		checks:  map[string]servers.Check{},
+		svc:         opts.Service,
+		opts:        opts,
+		query:       strings.TrimSpace(opts.Initial),
+		input:       input,
+		spinner:     newSpinner(),
+		width:       120,
+		height:      32,
+		checks:      map[string]servers.Check{},
+		diagnostics: ensureDiagEngine(opts.Diagnostics),
+		diagLive:    true,
 	}
 	model.input.SetValue(model.query)
 	model.input.CursorEnd()
@@ -207,6 +233,34 @@ func (m ServerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.checkName = hit.Server.Name
 		return m, tea.Batch(m.spinner.Tick, m.checkCmd())
 
+	case serverDiagMsg:
+		if msg.seq != m.diagSeq {
+			return m, nil
+		}
+		m.diagLoading = false
+		hit, ok := m.selected()
+		if !ok || hit.Server.Name != msg.name {
+			return m, nil
+		}
+		m.diagErr = msg.err
+		m.diag = msg.report
+		if msg.err != nil {
+			m.status = "diagnostics: " + msg.err.Error()
+		} else if msg.report != nil {
+			m.status = "diagnostics: " + string(msg.report.Verdict)
+		}
+		return m, nil
+
+	case serverDiagTickMsg:
+		if msg.seq != m.diagTickSeq || !m.diagMode {
+			return m, nil
+		}
+		next := m.scheduleDiagTick()
+		if !m.diagLive || m.diagLoading {
+			return m, next
+		}
+		return m, tea.Batch(next, m.startDiag())
+
 	case serverCheckMsg:
 		if msg.seq != m.checkSeq {
 			return m, nil
@@ -258,6 +312,9 @@ func (m ServerModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.help = false
 		}
 		return m, nil
+	}
+	if m.diagMode {
+		return m.handleDiagKey(key)
 	}
 	if m.editing {
 		switch key {
@@ -331,6 +388,13 @@ func (m ServerModel) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, tea.ExecProcess(process, func(err error) tea.Msg {
 			return actionDoneMsg{label: "ssh", err: err}
 		})
+	case "t":
+		if _, ok := m.selected(); !ok {
+			m.status = "no server selected"
+			return m, nil
+		}
+		m.enterDiagMode()
+		return m, tea.Batch(m.spinner.Tick, m.startDiag(), m.scheduleDiagTick())
 	case "c":
 		hit, ok := m.selected()
 		if !ok {
@@ -450,6 +514,9 @@ func (m ServerModel) openCmd() tea.Cmd {
 func (m ServerModel) View() string {
 	if m.help {
 		return m.helpView()
+	}
+	if m.diagMode {
+		return m.diagView()
 	}
 	width := max(60, m.width)
 	height := max(20, m.height)
@@ -655,7 +722,7 @@ func checkLine(label string, check servers.HTTPCheck, width int) string {
 func (m ServerModel) footerView(width int) string {
 	keys := [][2]string{
 		{"↑↓", "move"}, {"/", "search"}, {"enter", "web"}, {"s", "ssh"},
-		{"c", "checks"}, {"y", "copy"}, {"r", "reload"}, {"?", "help"}, {"q", "quit"},
+		{"c", "checks"}, {"t", "troubleshoot"}, {"y", "copy"}, {"r", "reload"}, {"?", "help"}, {"q", "quit"},
 	}
 	parts := make([]string, 0, len(keys))
 	for _, key := range keys {
@@ -673,6 +740,7 @@ func (m ServerModel) helpView() string {
 		styleHelpKey.Render("enter / o") + styleDim.Render("   open the unified web UI"),
 		styleHelpKey.Render("s") + styleDim.Render("           open SSH"),
 		styleHelpKey.Render("c") + styleDim.Render("           run HTTP, ping, TCP and SSH checks"),
+		styleHelpKey.Render("t") + styleDim.Render("           open live diagnostics for the selected VM"),
 		styleHelpKey.Render("y") + styleDim.Render("           copy the SSH command"),
 		styleHelpKey.Render("r") + styleDim.Render("           reload the inventory"),
 		styleHelpKey.Render("g / G") + styleDim.Render("       first / last"),

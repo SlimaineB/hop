@@ -11,34 +11,115 @@
 </head>
 <body>
   <div class="ambient" aria-hidden="true"></div>
-  <header class="topbar">
-    <a class="brand" href="/" aria-label="hop home">
-      <span class="brand-mark" aria-hidden="true">o</span>
-      <span class="brand-text">
-        <span class="brand-name">hop</span>
-        <span class="brand-tag">your local dev cockpit</span>
-      </span>
-    </a>
-    <div class="topbar-right">
-      <a class="nav-link" data-nav="/" href="/">Kubernetes</a>
-      <a class="nav-link" data-nav="/servers" href="/servers">Servers</a>
-      <a class="nav-link" data-nav="/search" href="/search">Search</a>
-      <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Switch to light theme" title="Switch to light theme">
-        <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg>
-        <svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5 8.5 8.5 0 1 0 20.5 14.5Z"></path></svg>
-      </button>
-      <span class="version" title="version">v{{version}}</span>
-    </div>
-  </header>
-  <main class="shell">
+  <div class="app">
+    <aside class="sidebar" id="sidebar" aria-label="Primary navigation">
+      <div class="sidebar-head">
+        <a class="brand" href="/" aria-label="hop home">
+          <span class="brand-mark" aria-hidden="true">o</span>
+          <span class="brand-text">
+            <span class="brand-name">hop</span>
+            <span class="brand-tag">local dev cockpit</span>
+          </span>
+        </a>
+      </div>
+      <nav class="side-nav">
+        <span class="side-label">Workspace</span>
+        <a class="side-link" data-nav="/" href="/">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"></rect><rect x="14" y="3" width="7" height="7" rx="1.5"></rect><rect x="3" y="14" width="7" height="7" rx="1.5"></rect><rect x="14" y="14" width="7" height="7" rx="1.5"></rect></svg>
+          <span class="side-text">Overview</span>
+        </a>
+        <a class="side-link" data-nav="/kubernetes" href="/kubernetes">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z"></path><path d="M12 12v9M4 7.5l8 4.5 8-4.5"></path></svg>
+          <span class="side-text">Kubernetes</span>
+        </a>
+        <a class="side-link" data-nav="/servers" href="/servers">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="2"></rect><rect x="3" y="13" width="18" height="7" rx="2"></rect><path d="M7 7.5h.01M7 16.5h.01"></path></svg>
+          <span class="side-text">Servers</span>
+        </a>
+        <a class="side-link" data-nav="/diagnostics" href="/diagnostics">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2-6 4 12 2-6h6"></path></svg>
+          <span class="side-text">Diagnostics</span>
+        </a>
+        <span class="side-label side-label-gap">Inventory</span>
+        <a class="side-link" data-nav="/containers" href="/containers">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z"></path><path d="M8 10.5 12 13l4-2.5M12 13v5"></path></svg>
+          <span class="side-text">Containers</span>
+        </a>
+        <a class="side-link" data-nav="/git" href="/git">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="5" r="2"></circle><circle cx="18" cy="6" r="2"></circle><circle cx="6" cy="19" r="2"></circle><path d="M6 7v10M8 7.5c3 0 3.5 1 6 1.5s4 1.5 4 2.5"></path></svg>
+          <span class="side-text">Repositories</span>
+        </a>
+        <a class="side-link" data-nav="/packages" href="/packages">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5v-9Z"></path><path d="M4 7.5 12 12l8-4.5M12 12v9"></path></svg>
+          <span class="side-text">Packages</span>
+        </a>
+        <a class="side-link" data-nav="/tickets" href="/tickets">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v5a2 2 0 0 0 0 4v5H4v-5a2 2 0 0 0 0-4V5Z"></path><path d="M12 7v10"></path></svg>
+          <span class="side-text">Tickets</span>
+        </a>
+      </nav>
+      <div class="sidebar-foot">
+        <button class="side-command" type="button" data-palette-open>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2"></path></svg>
+          <span class="side-text">Search</span>
+          <kbd class="side-kbd">⌘K</kbd>
+        </button>
+        <span class="side-version">v{{version}}</span>
+      </div>
+    </aside>
+    <button class="sidebar-overlay" id="sidebar-overlay" type="button" aria-label="Close navigation" hidden></button>
+    <div class="app-main">
+      <header class="topbar">
+        <div class="topbar-left">
+          <button class="icon-btn sidebar-toggle" id="sidebar-toggle" type="button" aria-label="Toggle navigation" aria-controls="sidebar" aria-expanded="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"></path></svg>
+          </button>
+          <div class="topbar-context">
+            <span class="topbar-kicker">hop</span>
+            <span class="topbar-title">{{if .Title}}{{.Title}}{{else}}Overview{{end}}</span>
+          </div>
+        </div>
+        <div class="topbar-right">
+          <button class="topbar-search" type="button" data-palette-open aria-label="Open global search">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2"></path></svg>
+            <span>Search</span>
+            <kbd>⌘K</kbd>
+          </button>
+          <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Switch to light theme" title="Switch to light theme">
+            <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg>
+            <svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5 8.5 8.5 0 1 0 20.5 14.5Z"></path></svg>
+          </button>
+        </div>
+      </header>
+      <main class="shell">
 {{end}}
 
 {{define "foot"}}
-  </main>
-  <footer class="footer">
-    <span>hop · pods, VMs, repos, packages &amp; tickets</span>
-    <span class="footer-hint">Ctrl+C to stop the local server</span>
-  </footer>
+      </main>
+      <footer class="footer">
+        <span>hop · pods, VMs, repos, packages &amp; tickets</span>
+        <span class="footer-hint">Ctrl+C to stop the local server</span>
+      </footer>
+    </div>
+  </div>
+  <div class="palette" id="palette" hidden>
+    <div class="palette-backdrop" data-palette-close></div>
+    <div class="palette-panel" role="dialog" aria-modal="true" aria-label="Global search">
+      <div class="palette-head">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2"></path></svg>
+        <input id="palette-input" type="text" placeholder="Jump to a pod, VM, repo, package or ticket…" autocomplete="off" spellcheck="false" aria-label="Search every enabled source">
+        <kbd>esc</kbd>
+      </div>
+      <div class="palette-results" id="palette-results">
+        <div class="palette-empty">Type to search across every enabled source.</div>
+      </div>
+      <div class="palette-foot">
+        <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+        <span><kbd>↵</kbd> open</span>
+        <span><kbd>esc</kbd> close</span>
+      </div>
+    </div>
+  </div>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
   <script src="/static/common.js" defer></script>
   {{if .Script}}<script src="/static/{{.Script}}" defer></script>{{end}}

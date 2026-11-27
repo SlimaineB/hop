@@ -20,6 +20,9 @@ func (a *App) loadContainerService() (*containers.Service, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := requireFeature(cfg, "containers", "containers"); err != nil {
+		return nil, err
+	}
 	service := containers.New(cfg)
 	if !service.Enabled() {
 		return nil, fmt.Errorf("no Docker or Podman engine found; install one or configure containers.engines in %s", a.resolvedConfigPath())

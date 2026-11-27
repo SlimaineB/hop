@@ -30,7 +30,7 @@ func TestCategoryCommands(t *testing.T) {
 	for _, command := range root.Commands() {
 		found[command.Name()] = true
 	}
-	for _, name := range []string{"all", "git", "pkg", "pod", "vm", "link", "issue"} {
+	for _, name := range []string{"demo", "features", "all", "git", "pkg", "pod", "vm", "link", "issue"} {
 		if !found[name] {
 			t.Fatalf("missing command %q", name)
 		}

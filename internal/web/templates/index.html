@@ -1,27 +1,15 @@
 {{define "index.html"}}
 {{template "head" .}}
-<section class="hero">
-  <div class="hero-copy">
-    <p class="eyebrow">pods · vms · git · packages · tickets · links</p>
-    <h1>Find anything.<br><span>Open the right place.</span></h1>
-    <p class="lede">
-      Type a name, namespace, environment, branch, or image.
-      Each space creates a tag. Add vm, git, or pkg to focus a domain.
-      Enter searches every source in parallel.
-    </p>
+<section class="page-head">
+  <div>
+    <p class="eyebrow">{{if .Eyebrow}}{{.Eyebrow}}{{else}}hop{{end}}</p>
+    <h1>{{if .Heading}}{{.Heading}}{{else}}Search{{end}}</h1>
   </div>
-  <div class="stats" id="stats" aria-label="Stats">
-    <div class="stat"><span class="stat-value" data-stat="total">—</span><span class="stat-label">pods</span></div>
-    <div class="stat"><span class="stat-value" data-stat="running">—</span><span class="stat-label">running</span></div>
-    <div class="stat"><span class="stat-value" data-stat="ready">—</span><span class="stat-label">ready</span></div>
-    <div class="stat stat-warn"><span class="stat-value" data-stat="not_ready">—</span><span class="stat-label">not ready</span></div>
-    <div class="stat"><span class="stat-value" data-stat="contexts">—</span><span class="stat-label">contexts</span></div>
-    <div class="stat stat-warn"><span class="stat-value" data-stat="restarts">—</span><span class="stat-label">restarts</span></div>
-  </div>
+  {{if .Lede}}<p class="page-lede">{{.Lede}}</p>{{end}}
 </section>
 
 <section class="search-panel" aria-label="Search">
-  <div class="tag-input" id="tag-input">
+  <div class="tag-input" id="tag-input" data-sources="{{.Source}}">
     <span class="search-icon" aria-hidden="true">
       <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2"></path></svg>
     </span>
@@ -31,7 +19,7 @@
       class="search-input"
       type="text"
       value="{{.InitialQuery}}"
-      placeholder="api ns:prod… or supervision vm / git / pkg"
+      placeholder="{{if .Placeholder}}{{.Placeholder}}{{else}}Search anything…{{end}}"
       autocomplete="off"
       autocapitalize="off"
       spellcheck="false"
@@ -43,12 +31,23 @@
     </button>
   </div>
   <div class="search-hints">
-    <span><kbd>Space</kbd> or <kbd>Tab</kbd> separates tags</span>
+    <span><kbd>Space</kbd> or <kbd>Tab</kbd> separates filters</span>
     <span><kbd>Enter</kbd> starts the search</span>
-    <span><kbd>⌫</kbd> removes the last tag</span>
-    <span class="hint-mono">ns:dev · env:prod · label:app=api · vm supervision · git api · pkg ghcr</span>
+    <span><kbd>⌫</kbd> removes the last filter</span>
+    {{if not .Source}}<span class="hint-mono">ns:dev · env:prod · label:app=api · vm supervision · git api · pkg ghcr</span>{{end}}
   </div>
 </section>
+
+{{if .ShowStats}}
+<section class="stat-strip" id="stats" aria-label="Stats">
+  <div class="stat-strip-item"><span class="stat-value" data-stat="total">—</span><span class="stat-label">pods</span></div>
+  <div class="stat-strip-item"><span class="stat-value" data-stat="running">—</span><span class="stat-label">running</span></div>
+  <div class="stat-strip-item"><span class="stat-value" data-stat="ready">—</span><span class="stat-label">ready</span></div>
+  <div class="stat-strip-item stat-warn"><span class="stat-value" data-stat="not_ready">—</span><span class="stat-label">not ready</span></div>
+  <div class="stat-strip-item"><span class="stat-value" data-stat="contexts">—</span><span class="stat-label">contexts</span></div>
+  <div class="stat-strip-item stat-warn"><span class="stat-value" data-stat="restarts">—</span><span class="stat-label">restarts</span></div>
+</section>
+{{end}}
 
 {{if .Shortcuts}}
 <section class="shortcut-bar" aria-label="Browser shortcuts">
@@ -83,7 +82,7 @@
       </button>
     </div>
   </div>
-  <div id="results-body" class="results-body"></div>
+  <div id="results-body" class="results-body" data-empty-hint="{{.EmptyHint}}"></div>
 </section>
 {{template "foot" .}}
 {{end}}

@@ -9,8 +9,15 @@ import (
 )
 
 func (a *App) runTUI(service *app.Service, cfg *config.Config, query string) error {
+	if _, err := a.resolveEnv(cfg, query, true); err != nil {
+		return err
+	}
 	launcher := newWebLauncher(service, cfg)
 	defer launcher.Close()
+	engine, diagErr := newDiagEngine(cfg)
+	if diagErr != nil {
+		return diagErr
+	}
 
 	program := tea.NewProgram(
 		tui.New(tui.Options{
@@ -22,6 +29,7 @@ func (a *App) runTUI(service *app.Service, cfg *config.Config, query string) err
 			Limit:        a.flags.limit,
 			ForceRefresh: a.flags.refresh,
 			OpenWeb:      launcher.OpenPod,
+			Diagnostics:  engine,
 		}),
 		tea.WithAltScreen(),
 	)

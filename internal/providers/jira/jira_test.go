@@ -122,3 +122,68 @@ func TestProviderRejectsInvalidBaseURL(t *testing.T) {
 		t.Fatal("expected error")
 	}
 }
+
+func TestProviderMinimalConfig(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer secret" {
+			t.Fatalf("unexpected authorization: %q", r.Header.Get("Authorization"))
+		}
+		if r.URL.Path != "/rest/api/2/search" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+		jql := r.URL.Query().Get("jql")
+		if !strings.Contains(jql, `project IN ("OPS","DEV")`) || !strings.Contains(jql, `text ~ "timeout"`) {
+			t.Fatalf("unexpected jql: %s", jql)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"issues":[{"key":"OPS-1","fields":{"summary":"Timeout","status":{"name":"Open"},"updated":"2026-11-25T10:00:00.000+0000"}}]}`))
+	}))
+	defer server.Close()
+
+	provider, err := New("jira", config.ProviderConfig{
+		BaseURL:  server.URL,
+		Token:    "secret",
+		Projects: []string{"OPS", "DEV"},
+	})
+	if err != nil {
+		t.Fatalf("new provider: %v", err)
+	}
+	tickets, err := provider.Search(context.Background(), "timeout", 5)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(tickets) != 1 || tickets[0].Key != "OPS-1" {
+		t.Fatalf("tickets = %+v", tickets)
+	}
+}
+
+func TestProviderSingleProjectIsDefaultForCreate(t *testing.T) {
+	var created map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/rest/api/2/issue" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+		if err := json.NewDecoder(r.Body).Decode(&created); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"key":"OPS-2"}`))
+	}))
+	defer server.Close()
+
+	provider, err := New("jira", config.ProviderConfig{
+		BaseURL:  server.URL,
+		Token:    "secret",
+		Projects: []string{"OPS"},
+	})
+	if err != nil {
+		t.Fatalf("new provider: %v", err)
+	}
+	if _, err := provider.Create(context.Background(), providers.TicketDraft{Title: "Disk full"}); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	fields := created["fields"].(map[string]any)
+	if fields["project"].(map[string]any)["key"] != "OPS" {
+		t.Fatalf("project = %+v", fields["project"])
+	}
+}

@@ -144,11 +144,17 @@ func TestNormalizeProviders(t *testing.T) {
 		" Jira-Prod ": {
 			Type:        " JIRA ",
 			BaseURL:     "https://jira.example.com/",
+			Token:       " secret ",
 			TokenEnv:    " JIRA_TOKEN ",
 			AuthScheme:  " BASIC ",
 			Keywords:    []string{"jira, tickets", "bug"},
+			Projects:    []string{" OPS ", "OPS,DEV"},
+			Groups:      []string{" platform "},
 			Defaults:    map[string]string{" Project ": " OPS "},
 			UsernameEnv: " JIRA_USER ",
+		},
+		"GitLab": {
+			BaseURL: "https://gitlab.example.com/",
 		},
 	}
 	cfg.Issues.DefaultProvider = " JIRA-PROD "
@@ -160,11 +166,17 @@ func TestNormalizeProviders(t *testing.T) {
 	if provider.Type != "jira" || provider.BaseURL != "https://jira.example.com" || provider.AuthScheme != "basic" {
 		t.Fatalf("provider = %+v", provider)
 	}
-	if provider.Defaults["project"] != "OPS" || provider.TokenEnv != "JIRA_TOKEN" {
+	if provider.Defaults["project"] != "OPS" || provider.TokenEnv != "JIRA_TOKEN" || provider.Token != "secret" {
 		t.Fatalf("provider = %+v", provider)
 	}
 	if len(provider.Keywords) != 3 || cfg.Issues.DefaultProvider != "jira-prod" {
 		t.Fatalf("provider = %+v, default = %s", provider, cfg.Issues.DefaultProvider)
+	}
+	if len(provider.Projects) != 2 || provider.Projects[1] != "DEV" || len(provider.Groups) != 1 {
+		t.Fatalf("provider scope = %+v", provider)
+	}
+	if cfg.Providers["gitlab"].Type != "gitlab" {
+		t.Fatalf("inferred type = %+v", cfg.Providers["gitlab"])
 	}
 }
 

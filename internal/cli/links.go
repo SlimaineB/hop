@@ -38,6 +38,9 @@ TUI keys: enter/o open, y copy the URL, e edit, a add, d delete.`,
 			if err != nil {
 				return err
 			}
+			if err := requireFeature(cfg, "shortcuts", "shortcuts"); err != nil {
+				return err
+			}
 			interactive := term.IsTerminal(int(os.Stdout.Fd())) && term.IsTerminal(int(os.Stdin.Fd()))
 			tuiAllowed := !listOnly && !asJSON && !printURL
 			if tuiAllowed && (useTUI || (len(args) == 0 && interactive)) {

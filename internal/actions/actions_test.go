@@ -156,3 +156,41 @@ func TestLogsTailIncludesTimestampsAndRange(t *testing.T) {
 		}
 	}
 }
+
+func TestBrowserCandidatesUseBROWSER(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("BROWSER fallback uses sh")
+	}
+	t.Setenv("BROWSER", "my-browser --new-window %s")
+	target := "http://127.0.0.1:1234/pod?context=prod-eu&namespace=apps"
+	candidates := browserCandidates(target)
+	if len(candidates) == 0 || candidates[0].name != "sh" {
+		t.Fatalf("first candidate = %+v, want sh", candidates)
+	}
+	candidate := candidates[0]
+	command := candidate.args[1]
+	if !strings.Contains(command, "my-browser --new-window") || !strings.Contains(command, `"${1}"`) {
+		t.Fatalf("BROWSER command not used: %s", command)
+	}
+	if strings.Contains(command, target) {
+		t.Fatalf("URL must be passed as a positional argument, not interpolated: %s", command)
+	}
+	if got := candidate.args[len(candidate.args)-1]; got != target {
+		t.Fatalf("browser URL arg = %q, want %q", got, target)
+	}
+}
+
+func TestBrowserCandidatesAppendURLWhenBROWSERHasNoPlaceholder(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("BROWSER fallback uses sh")
+	}
+	t.Setenv("BROWSER", "firefox")
+	candidates := browserCandidates("http://example.test")
+	if len(candidates) == 0 || candidates[0].name != "sh" {
+		t.Fatalf("first candidate = %+v, want sh", candidates)
+	}
+	command := candidates[0].args[1]
+	if !strings.HasSuffix(command, ` "$1"`) {
+		t.Fatalf("URL placeholder missing: %s", command)
+	}
+}

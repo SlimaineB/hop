@@ -13,6 +13,7 @@ import (
 
 	"github.com/SlimaineB/hop/internal/actions"
 	"github.com/SlimaineB/hop/internal/app"
+	"github.com/SlimaineB/hop/internal/diag"
 	"github.com/SlimaineB/hop/internal/kube"
 	"github.com/SlimaineB/hop/internal/search"
 )
@@ -26,6 +27,7 @@ type Options struct {
 	Limit        int
 	ForceRefresh bool
 	OpenWeb      func(ref kube.PodRef, query string) (string, error)
+	Diagnostics  *diag.Engine
 }
 
 type Model struct {
@@ -80,6 +82,21 @@ type Model struct {
 	localSeq  int
 	editing   bool
 	help      bool
+
+	diagnostics *diag.Engine
+	diagMode    bool
+	diagLive    bool
+	diag        *diag.Report
+	diagLoading bool
+	diagErr     error
+	diagID      string
+	diagSeq     int
+	diagTickSeq int
+	diagOffset  int
+}
+
+type localSearchTickMsg struct {
+	seq int
 }
 
 type searchMsg struct {
@@ -105,6 +122,17 @@ type statsMsg struct {
 
 type statsTickMsg struct {
 	id string
+}
+
+type diagMsg struct {
+	seq    int
+	id     string
+	report *diag.Report
+	err    error
+}
+
+type diagTickMsg struct {
+	seq int
 }
 
 type logsMsg struct {
@@ -133,13 +161,15 @@ func New(opts Options) Model {
 	input.Width = 72
 
 	model := Model{
-		svc:     opts.Service,
-		opts:    opts,
-		query:   strings.TrimSpace(opts.Initial),
-		input:   input,
-		spinner: newSpinner(),
-		width:   120,
-		height:  32,
+		svc:         opts.Service,
+		opts:        opts,
+		query:       strings.TrimSpace(opts.Initial),
+		input:       input,
+		spinner:     newSpinner(),
+		width:       120,
+		height:      32,
+		diagnostics: ensureDiagEngine(opts.Diagnostics),
+		diagLive:    true,
 	}
 	model.input.SetValue(model.query)
 	model.input.CursorEnd()

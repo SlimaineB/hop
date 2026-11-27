@@ -19,17 +19,28 @@ import (
 )
 
 type Service struct {
-	cfg      *config.Config
-	provider kube.Provider
-	engine   *search.Engine
-	cache    *cache.Store
+	cfg         *config.Config
+	provider    kube.Provider
+	engine      *search.Engine
+	cache       *cache.Store
+	fingerprint string
 
 	fetchMu sync.Mutex
 
-	mu         sync.RWMutex
-	snapshot   *Snapshot
-	candidates []search.Candidate
-	podsByID   map[string]kube.Pod
+	mu              sync.RWMutex
+	snapshot        *Snapshot
+	snapshotKey     string
+	snapshotVersion uint64
+	candidates      []search.Candidate
+	podsByID        map[string]kube.Pod
+
+	filterMu      sync.Mutex
+	filterVersion uint64
+	filterKey     string
+	filtered      []search.Candidate
+
+	cacheSaveMu sync.Mutex
+	cacheSaveWG sync.WaitGroup
 
 	metricsMu sync.Mutex
 	metrics   *kube.MetricsResult
@@ -54,22 +65,30 @@ type WarmRequest struct {
 }
 
 func New(cfg *config.Config) (*Service, error) {
+	if cfg.SourceDisabled("pods") {
+		return NewWithProvider(cfg, kube.NewDisabled())
+	}
 	provider := kube.NewClientGo(kube.Options{
 		Kubeconfigs:     cfg.Kube.Kubeconfigs,
 		IncludeContexts: cfg.Kube.IncludeContexts,
 		ExcludeContexts: cfg.Kube.ExcludeContexts,
 		RequestTimeout:  cfg.Kube.RequestTimeout.Get(),
 	})
+	return NewWithProvider(cfg, provider)
+}
+
+func NewWithProvider(cfg *config.Config, provider kube.Provider) (*Service, error) {
 	store, err := cache.New()
 	if err != nil {
 		store = nil
 	}
 	return &Service{
-		cfg:      cfg,
-		provider: provider,
-		engine:   search.NewEngine(),
-		cache:    store,
-		podsByID: map[string]kube.Pod{},
+		cfg:         cfg,
+		provider:    provider,
+		engine:      search.NewEngine(),
+		cache:       store,
+		fingerprint: cfg.Fingerprint(),
+		podsByID:    map[string]kube.Pod{},
 	}, nil
 }
 
@@ -101,22 +120,24 @@ func (s *Service) Contexts(ctx context.Context) ([]kube.Context, error) {
 	return contexts, err
 }
 
-func (s *Service) currentFresh() *Snapshot {
+func (s *Service) currentFresh(key string) *Snapshot {
 	ttl := s.cfg.Kube.CacheTTL.Get()
 	if ttl <= 0 {
 		return nil
 	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if s.snapshot != nil && time.Since(s.snapshot.FetchedAt) < ttl {
+	if s.snapshot != nil && s.snapshotKey == key && len(s.snapshot.Errors) == 0 && time.Since(s.snapshot.FetchedAt) < ttl {
 		return s.snapshot
 	}
 	return nil
 }
 
 func (s *Service) Warm(ctx context.Context, req WarmRequest) (*Snapshot, error) {
+	ttl := s.cfg.Kube.CacheTTL.Get()
+	key := s.cacheKey(req)
 	if !req.ForceRefresh {
-		if snap := s.currentFresh(); snap != nil {
+		if snap := s.currentFresh(key); snap != nil {
 			return snap, nil
 		}
 	}
@@ -125,20 +146,38 @@ func (s *Service) Warm(ctx context.Context, req WarmRequest) (*Snapshot, error) 
 	defer s.fetchMu.Unlock()
 
 	if !req.ForceRefresh {
-		if snap := s.currentFresh(); snap != nil {
+		if snap := s.currentFresh(key); snap != nil {
 			return snap, nil
 		}
 	}
 
-	ttl := s.cfg.Kube.CacheTTL.Get()
-	key := s.cacheKey(req)
 	var cached Snapshot
-	if !req.ForceRefresh && s.cache != nil && ttl > 0 {
-		if savedAt, ok, err := s.cache.Load(key, &cached); err == nil && ok && time.Since(savedAt) <= ttl {
-			cached.FromCache = true
-			cached.CacheAge = time.Since(savedAt)
-			s.install(&cached)
-			return &cached, nil
+	cacheLoaded := false
+	cacheAge := time.Duration(0)
+	loadCache := func() bool {
+		if cacheLoaded {
+			return true
+		}
+		if s.cache == nil || ttl <= 0 {
+			return false
+		}
+		savedAt, ok, err := s.cache.Load(key, &cached)
+		if err != nil || !ok {
+			return false
+		}
+		cacheLoaded = true
+		cacheAge = time.Since(savedAt)
+		return true
+	}
+
+	if !req.ForceRefresh && ttl > 0 && s.cache != nil {
+		if savedAt, ok, err := s.cache.SavedAt(key); err == nil && ok && time.Since(savedAt) <= ttl {
+			if loadCache() && len(cached.Errors) == 0 {
+				cached.FromCache = true
+				cached.CacheAge = cacheAge
+				s.install(&cached, key)
+				return &cached, nil
+			}
 		}
 	}
 
@@ -158,15 +197,12 @@ func (s *Service) Warm(ctx context.Context, req WarmRequest) (*Snapshot, error) 
 		MaxPodsPerContext: s.cfg.Kube.MaxPodsPerContext,
 	})
 	if err != nil {
-		if s.cache != nil {
-			var stale Snapshot
-			if _, ok, loadErr := s.cache.Load(key, &stale); loadErr == nil && ok {
-				stale.FromCache = true
-				stale.CacheAge = time.Since(stale.FetchedAt)
-				stale.Errors = append(stale.Errors, kube.ContextError{Context: "*", Error: err.Error()})
-				s.install(&stale)
-				return &stale, nil
-			}
+		if loadCache() {
+			cached.FromCache = true
+			cached.CacheAge = cacheAge
+			cached.Errors = append(cached.Errors, kube.ContextError{Context: "*", Error: err.Error()})
+			s.install(&cached, key)
+			return &cached, nil
 		}
 		return nil, err
 	}
@@ -180,17 +216,59 @@ func (s *Service) Warm(ctx context.Context, req WarmRequest) (*Snapshot, error) 
 		Truncated:      result.Truncated,
 		EstimatedTotal: result.EstimatedTotal,
 	}
-	s.enrich(snap)
-	if s.cache != nil && ttl > 0 && len(snap.Errors) == 0 {
-		_ = s.cache.Save(key, snap)
+	if len(snap.Errors) > 0 && loadCache() {
+		mergeCachedContexts(snap, &cached)
 	}
-	s.install(snap)
+	s.enrich(snap)
+	s.install(snap, key)
+	if s.cache != nil && ttl > 0 && (len(snap.Errors) == 0 || len(snap.Pods) > 0) {
+		s.saveCache(key, snap)
+	}
 	return snap, nil
 }
 
+func (s *Service) saveCache(key string, snap *Snapshot) {
+	s.cacheSaveWG.Add(1)
+	go func() {
+		defer s.cacheSaveWG.Done()
+		s.cacheSaveMu.Lock()
+		defer s.cacheSaveMu.Unlock()
+		if s.Snapshot() != snap {
+			return
+		}
+		cached := *snap
+		cached.FromCache = false
+		cached.CacheAge = 0
+		_ = s.cache.Save(key, &cached)
+	}()
+}
+
+func mergeCachedContexts(snap *Snapshot, cached *Snapshot) {
+	failed := make(map[string]bool, len(snap.Errors))
+	for _, item := range snap.Errors {
+		failed[item.Context] = true
+	}
+	if len(failed) == 0 {
+		return
+	}
+	seen := make(map[string]bool, len(snap.Pods)+len(cached.Pods))
+	for _, pod := range snap.Pods {
+		seen[podID(pod)] = true
+	}
+	for _, pod := range cached.Pods {
+		if !failed[pod.Context] || seen[podID(pod)] {
+			continue
+		}
+		snap.Pods = append(snap.Pods, pod)
+		seen[podID(pod)] = true
+	}
+}
+
 func (s *Service) enrich(snap *Snapshot) {
+	resolvedByContext := make(map[string]config.Resolved, len(snap.Contexts))
 	for i := range snap.Contexts {
 		resolved := s.cfg.Resolve(snap.Contexts[i].Name, snap.Contexts[i].Cluster)
+		resolvedByContext[snap.Contexts[i].Name] = resolved
 		snap.Contexts[i].Env = resolved.Env
 		snap.Contexts[i].Display = resolved.Display
 		if resolved.Workspace != nil {
@@ -198,7 +276,12 @@ func (s *Service) enrich(snap *Snapshot) {
 		}
 	}
 	for i := range snap.Pods {
-		enrichPod(&snap.Pods[i], s.cfg)
+		pod := &snap.Pods[i]
+		resolved, ok := resolvedByContext[pod.Context]
+		if !ok {
+			resolved = s.cfg.Resolve(pod.Context, pod.Cluster)
+		}
+		applyPodResolved(pod, resolved)
 	}
 	sort.SliceStable(snap.Pods, func(i, j int) bool {
 		return snap.Pods[i].StartTime.After(snap.Pods[j].StartTime)
@@ -206,7 +289,10 @@ func (s *Service) enrich(snap *Snapshot) {
 }
 
 func enrichPod(pod *kube.Pod, cfg *config.Config) {
-	resolved := cfg.Resolve(pod.Context, pod.Cluster)
+	applyPodResolved(pod, cfg.Resolve(pod.Context, pod.Cluster))
+}
+
+func applyPodResolved(pod *kube.Pod, resolved config.Resolved) {
 	pod.Env = resolved.Env
 	pod.Display = resolved.Display
 	if pod.Workload == "" {
@@ -214,10 +300,12 @@ func enrichPod(pod *kube.Pod, cfg *config.Config) {
 	}
 }
 
-func (s *Service) install(snap *Snapshot) {
+func (s *Service) install(snap *Snapshot, key string) {
 	candidates, index := buildCandidates(snap.Pods)
 	s.mu.Lock()
 	s.snapshot = snap
+	s.snapshotKey = key
+	s.snapshotVersion++
 	s.candidates = candidates
 	s.podsByID = index
 	s.mu.Unlock()
@@ -243,11 +331,18 @@ func (s *Service) CacheDir() string {
 	return s.cache.Dir()
 }
 
-func (s *Service) Close() error { return s.provider.Close() }
+func (s *Service) Close() error {
+	s.cacheSaveWG.Wait()
+	return s.provider.Close()
+}
 
 func (s *Service) cacheKey(req WarmRequest) string {
 	var b strings.Builder
-	b.WriteString(s.cfg.Fingerprint())
+	fingerprint := s.fingerprint
+	if fingerprint == "" {
+		fingerprint = s.cfg.Fingerprint()
+	}
+	b.WriteString(fingerprint)
 	b.WriteByte('\n')
 	b.WriteString("contexts=")
 	b.WriteString(strings.Join(req.Contexts, ","))

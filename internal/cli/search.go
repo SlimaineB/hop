@@ -30,7 +30,13 @@ and log commands:
 			if err != nil {
 				return err
 			}
+			if err := requireFeature(cfg, "pods", "Kubernetes pods"); err != nil {
+				return err
+			}
 			applyRuntimeOverrides(cfg, a.flags)
+			if _, err := a.resolveEnv(cfg, strings.Join(args, " "), false); err != nil {
+				return err
+			}
 			service, err := app.New(cfg)
 			if err != nil {
 				return err
@@ -52,7 +58,7 @@ and log commands:
 	cmd.Flags().BoolVar(&a.flags.plain, "plain", false, "one tab-separated line per pod")
 	cmd.Flags().BoolVar(&a.flags.refresh, "refresh", false, "force a refresh of all clusters")
 	cmd.Flags().DurationVar(&a.flags.timeout, "timeout", 0, "per-cluster request timeout")
-	cmd.Flags().IntVar(&a.flags.concurrency, "concurrency", 0, "number of clusters queried in parallel")
+	cmd.Flags().IntVar(&a.flags.concurrency, "concurrency", -1, "max clusters queried in parallel (-1 = config, 0 = all selected)")
 	return cmd
 }
 

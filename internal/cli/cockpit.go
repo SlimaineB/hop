@@ -151,6 +151,9 @@ GitHub and GitLab remotes get branch, commit and merge-request links.`,
 			if err != nil {
 				return err
 			}
+			if err := requireFeature(cfg, "repos", "Git repositories"); err != nil {
+				return err
+			}
 			service := repos.New(cfg)
 			if !service.Enabled() {
 				return fmt.Errorf("no Git roots configured; add git.roots or git.repos to %s", a.resolvedConfigPath())
@@ -224,6 +227,9 @@ detected in your pods. Tags are fetched on demand.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, _, err := config.Load(a.configPath)
 			if err != nil {
+				return err
+			}
+			if err := requireFeature(cfg, "packages", "packages"); err != nil {
 				return err
 			}
 			service := containerregistry.New(cfg)

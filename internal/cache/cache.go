@@ -23,7 +23,10 @@ func New() (*Store, error) {
 	if err != nil || base == "" {
 		base = os.TempDir()
 	}
-	dir := filepath.Join(base, "hop")
+	return NewAt(filepath.Join(base, "hop"))
+}
+
+func NewAt(dir string) (*Store, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
@@ -31,6 +34,17 @@ func New() (*Store, error) {
 }
 
 func (s *Store) Dir() string { return s.dir }
+
+func (s *Store) SavedAt(key string) (time.Time, bool, error) {
+	info, err := os.Stat(s.path(key))
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return time.Time{}, false, nil
+		}
+		return time.Time{}, false, err
+	}
+	return info.ModTime(), true, nil
+}
 
 func (s *Store) Load(key string, dst any) (time.Time, bool, error) {
 	data, err := os.ReadFile(s.path(key))

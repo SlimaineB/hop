@@ -24,6 +24,7 @@ type Query struct {
 	Local          bool         `json:"local,omitempty"`
 	ForceRefresh   bool         `json:"force_refresh,omitempty"`
 	IncludeNetwork bool         `json:"include_network,omitempty"`
+	Sources        []string     `json:"sources,omitempty"`
 }
 
 // Item is the generic, renderable unit returned by every source. Built-in
@@ -122,7 +123,7 @@ func (r *Registry) Search(ctx context.Context, query Query) Response {
 	if query.Limit <= 0 {
 		query.Limit = 50
 	}
-	sources := r.active(query.Raw)
+	sources := r.active(query.Raw, query.Sources)
 
 	results := make([]Result, len(sources))
 	var wg sync.WaitGroup
@@ -188,13 +189,27 @@ func runSource(ctx context.Context, source Source, query Query) (Result, error) 
 	return source.Search(ctx, query)
 }
 
-func (r *Registry) active(raw string) []Source {
+func (r *Registry) active(raw string, only []string) []Source {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
+	wanted := map[string]bool{}
+	for _, id := range only {
+		id = strings.ToLower(strings.TrimSpace(id))
+		if id != "" {
+			wanted[id] = true
+		}
+	}
 	tokens := tokens(raw)
 	selected := make([]Source, 0, len(r.sources))
 	matched := false
 	for _, source := range r.sources {
+		if len(wanted) > 0 {
+			if wanted[strings.ToLower(source.ID())] {
+				selected = append(selected, source)
+				matched = true
+			}
+			continue
+		}
 		for _, selector := range source.Selectors() {
 			if tokens[strings.ToLower(strings.TrimSpace(selector))] {
 				selected = append(selected, source)
@@ -203,7 +218,7 @@ func (r *Registry) active(raw string) []Source {
 			}
 		}
 	}
-	if matched {
+	if matched || len(wanted) > 0 {
 		return selected
 	}
 	return append([]Source(nil), r.sources...)
