@@ -41,18 +41,33 @@ type Backend interface {
 	Stats() app.Stats
 }
 
+// ContextInfo describes a hop context exposed by the web UI.
+type ContextInfo struct {
+	Name  string
+	Label string
+}
+
+type contextMenuData struct {
+	Active   string
+	Contexts []ContextInfo
+}
+
 type Options struct {
-	Bind        string
-	Port        int
-	Theme       string
-	Servers     *servers.Service
-	Shortcuts   []config.ShortcutConfig
-	LiveLimit   int
-	Registry    *plugin.Registry
-	Stats       func() app.Stats
-	Dashboard   *dashboard.Service
-	Apps        []config.AppConfig
-	Diagnostics config.Diagnostics
+	Bind           string
+	Port           int
+	Theme          string
+	ConfigPath     string
+	ConfigSnapshot string
+	ContextName    string
+	Contexts       []ContextInfo
+	Servers        *servers.Service
+	Shortcuts      []config.ShortcutConfig
+	LiveLimit      int
+	Registry       *plugin.Registry
+	Stats          func() app.Stats
+	Dashboard      *dashboard.Service
+	Apps           []config.AppConfig
+	Diagnostics    config.Diagnostics
 }
 
 type Server struct {
@@ -107,6 +122,9 @@ func New(backend Backend, options Options) (*Server, error) {
 		"barWidth":         barWidth,
 		"dash":             dash,
 		"safeURL":          safeURL,
+		"contextMenu": func() contextMenuData {
+			return contextMenuData{Active: options.ContextName, Contexts: options.Contexts}
+		},
 	}
 	tmpl, err := template.New("hop").Funcs(funcs).ParseFS(content, "templates/*.html")
 	if err != nil {
@@ -141,9 +159,10 @@ func (s *Server) routes() {
 	}
 	staticHandler := http.FileServer(http.FS(staticFS))
 
-	s.mux.HandleFunc("/", s.handleDashboard)
+	s.mux.HandleFunc("/", s.handleCockpit)
 	s.mux.HandleFunc("/dashboard", s.handleDashboard)
 	s.mux.HandleFunc("/cockpit", s.handleCockpit)
+	s.mux.HandleFunc("/config", s.handleConfig)
 	s.mux.HandleFunc("/kubernetes", s.handleDomain)
 	s.mux.HandleFunc("/containers", s.handleDomain)
 	s.mux.HandleFunc("/git", s.handleDomain)
@@ -158,6 +177,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/servers", s.handleServers)
 	s.mux.HandleFunc("/diagnostics", s.handleDiagnostics)
 	s.mux.Handle("/static/", http.StripPrefix("/static/", staticHandler))
+	s.mux.HandleFunc("/api/config", s.handleAPIConfig)
 	s.mux.HandleFunc("/api/dashboard", s.handleAPIDashboard)
 	s.mux.HandleFunc("/api/dashboard/servers", s.handleAPIDashboardServers)
 	s.mux.HandleFunc("/api/diagnostics/apps", s.handleAPIDiagnosticsApps)
@@ -244,11 +264,17 @@ func (s *Server) Shutdown(ctx context.Context) error {
 func (s *Server) withSecurity(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("X-Frame-Options", "DENY")
+		frameAncestors := "frame-ancestors 'none'"
+		if r.URL.Query().Get("embed") == "1" {
+			w.Header().Set("X-Frame-Options", "SAMEORIGIN")
+			frameAncestors = "frame-ancestors 'self'"
+		} else {
+			w.Header().Set("X-Frame-Options", "DENY")
+		}
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		w.Header().Set("Content-Security-Policy",
-			"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'")
-		if strings.HasPrefix(r.URL.Path, "/api/") || r.URL.Path == "/pod" || r.URL.Path == "/" {
+			"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; "+frameAncestors)
+		if strings.HasPrefix(r.URL.Path, "/api/") || r.URL.Path == "/pod" || r.URL.Path == "/" || r.URL.Path == "/config" {
 			w.Header().Set("Cache-Control", "no-store")
 		}
 		next.ServeHTTP(w, r)

@@ -13,6 +13,7 @@ import (
 	"github.com/SlimaineB/hop/internal/actions"
 	"github.com/SlimaineB/hop/internal/demo"
 	"github.com/SlimaineB/hop/internal/web"
+	"gopkg.in/yaml.v3"
 )
 
 func (a *App) newDemoCommand() *cobra.Command {
@@ -35,18 +36,20 @@ starts the web UI on a local port and opens it in your browser.`,
 
 			cfg := runtime.Config
 			applyRuntimeOverrides(cfg, a.flags)
+			snapshot, _ := yaml.Marshal(cfg)
 			server, err := web.New(runtime.Backend, web.Options{
-				Bind:        cfg.UI.Bind,
-				Port:        cfg.UI.Port,
-				Theme:       cfg.UI.Theme,
-				Servers:     runtime.Servers,
-				Shortcuts:   cfg.Shortcuts,
-				LiveLimit:   cfg.Search.LiveLimit,
-				Registry:    runtime.Registry,
-				Stats:       runtime.App.Stats,
-				Dashboard:   runtime.Dashboard,
-				Apps:        cfg.Apps,
-				Diagnostics: cfg.Diagnostics,
+				Bind:           cfg.UI.Bind,
+				Port:           cfg.UI.Port,
+				Theme:          cfg.UI.Theme,
+				ConfigSnapshot: string(snapshot),
+				Servers:        runtime.Servers,
+				Shortcuts:      cfg.Shortcuts,
+				LiveLimit:      cfg.Search.LiveLimit,
+				Registry:       runtime.Registry,
+				Stats:          runtime.App.Stats,
+				Dashboard:      runtime.Dashboard,
+				Apps:           cfg.Apps,
+				Diagnostics:    cfg.Diagnostics,
 			})
 			if err != nil {
 				return err

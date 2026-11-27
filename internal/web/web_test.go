@@ -73,7 +73,7 @@ func TestTemplatesRender(t *testing.T) {
 	}
 
 	index := httptest.NewRecorder()
-	server.Handler().ServeHTTP(index, httptest.NewRequest(http.MethodGet, "/", nil))
+	server.Handler().ServeHTTP(index, httptest.NewRequest(http.MethodGet, "/dashboard", nil))
 	if index.Code != http.StatusOK {
 		t.Fatalf("index status = %d, body=%s", index.Code, index.Body.String())
 	}
@@ -83,14 +83,16 @@ func TestTemplatesRender(t *testing.T) {
 		}
 	}
 
-	cockpitPage := httptest.NewRecorder()
-	server.Handler().ServeHTTP(cockpitPage, httptest.NewRequest(http.MethodGet, "/cockpit", nil))
-	if cockpitPage.Code != http.StatusOK {
-		t.Fatalf("cockpit status = %d, body=%s", cockpitPage.Code, cockpitPage.Body.String())
-	}
-	for _, needle := range []string{"cx-app-field", "cockpit.js", "cockpit.css", "dock-tl", "dock-br", "scan-btn", "side-switch"} {
-		if !strings.Contains(cockpitPage.Body.String(), needle) {
-			t.Fatalf("cockpit body missing %q", needle)
+	for _, path := range []string{"/", "/cockpit"} {
+		cockpitPage := httptest.NewRecorder()
+		server.Handler().ServeHTTP(cockpitPage, httptest.NewRequest(http.MethodGet, path, nil))
+		if cockpitPage.Code != http.StatusOK {
+			t.Fatalf("cockpit %s status = %d, body=%s", path, cockpitPage.Code, cockpitPage.Body.String())
+		}
+		for _, needle := range []string{"cx-app-field", "cockpit.js", "cockpit.css", "cx-rail-left", "cx-rail-right", "scan-btn", "side-switch", "frame-view"} {
+			if !strings.Contains(cockpitPage.Body.String(), needle) {
+				t.Fatalf("cockpit %s body missing %q", path, needle)
+			}
 		}
 	}
 
@@ -136,6 +138,36 @@ func TestTemplatesRender(t *testing.T) {
 	}
 	if backend.rng == nil {
 		t.Fatalf("backend did not receive time range")
+	}
+}
+
+func TestEmbedFramingHeaders(t *testing.T) {
+	backend := &fakeBackend{detail: sampleDetail()}
+	server, err := New(backend, Options{})
+	if err != nil {
+		t.Fatalf("new server: %v", err)
+	}
+
+	cases := []struct {
+		path      string
+		frame     string
+		ancestors string
+	}{
+		{path: "/dashboard", frame: "DENY", ancestors: "frame-ancestors 'none'"},
+		{path: "/dashboard?embed=1", frame: "SAMEORIGIN", ancestors: "frame-ancestors 'self'"},
+	}
+	for _, tc := range cases {
+		recorder := httptest.NewRecorder()
+		server.Handler().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, tc.path, nil))
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("%s status = %d", tc.path, recorder.Code)
+		}
+		if got := recorder.Header().Get("X-Frame-Options"); got != tc.frame {
+			t.Fatalf("%s X-Frame-Options = %q, want %q", tc.path, got, tc.frame)
+		}
+		if csp := recorder.Header().Get("Content-Security-Policy"); !strings.Contains(csp, tc.ancestors) {
+			t.Fatalf("%s CSP = %q, want %q", tc.path, csp, tc.ancestors)
+		}
 	}
 }
 

@@ -12,7 +12,7 @@ func (a *App) runTUI(service *app.Service, cfg *config.Config, query string) err
 	if _, err := a.resolveEnv(cfg, query, true); err != nil {
 		return err
 	}
-	launcher := newWebLauncher(service, cfg)
+	launcher := newWebLauncher(service, cfg, a.resolvedConfigPath())
 	defer launcher.Close()
 	engine, diagErr := newDiagEngine(cfg)
 	if diagErr != nil {

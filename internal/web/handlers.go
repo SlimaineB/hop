@@ -57,7 +57,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	if !onlyGET(w, r) {
 		return
 	}
-	if r.URL.Path != "/" && r.URL.Path != "/dashboard" {
+	if r.URL.Path != "/dashboard" {
 		http.NotFound(w, r)
 		return
 	}
@@ -75,7 +75,7 @@ func (s *Server) handleCockpit(w http.ResponseWriter, r *http.Request) {
 	if !onlyGET(w, r) {
 		return
 	}
-	if r.URL.Path != "/cockpit" {
+	if r.URL.Path != "/" && r.URL.Path != "/cockpit" {
 		http.NotFound(w, r)
 		return
 	}

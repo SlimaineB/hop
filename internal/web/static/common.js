@@ -211,7 +211,8 @@
   document.querySelectorAll("[data-nav]").forEach(function (link) {
     const href = link.getAttribute("data-nav");
     let active = false;
-    if (href === "/") active = path === "/" || path === "/dashboard";
+    if (href === "/") active = path === "/" || path === "/cockpit";
+    else if (href === "/dashboard") active = path === "/dashboard";
     else if (href === "/servers") active = path === "/servers" || path.startsWith("/server");
     else if (href === "/kubernetes") active = path === "/kubernetes" || path.startsWith("/pod");
     else active = path === href;

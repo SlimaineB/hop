@@ -8,6 +8,19 @@
   const LIVE_MS = 30000;
   const GOLDEN = 2.399963229728653;
 
+  const ROUTES = [
+    { match: /^\/dashboard$|^\/$/, view: "overview", label: "Overview" },
+    { match: /^\/kubernetes$|^\/pod$|^\/pods$/, view: "kubernetes", label: "Kubernetes" },
+    { match: /^\/git$/, view: "repos", label: "Repositories" },
+    { match: /^\/packages$/, view: "packages", label: "Packages" },
+    { match: /^\/tickets$/, view: "tickets", label: "Tickets" },
+    { match: /^\/servers$|^\/server$/, view: "servers", label: "Servers" },
+    { match: /^\/containers$/, view: "containers", label: "Containers" },
+    { match: /^\/diagnostics$/, view: "diagnostics", label: "Diagnostics" },
+    { match: /^\/config$/, view: "config", label: "Config" },
+    { match: /^\/search$/, view: "search", label: "Search" }
+  ];
+
   const state = {
     overview: null,
     apps: [],
@@ -25,7 +38,10 @@
     interacted: false,
     zoom: 1,
     panX: 0,
-    panY: 0
+    panY: 0,
+    view: "orbit",
+    viewLabel: "Orbit",
+    frameHref: ""
   };
 
   const nodes = new Map();
@@ -40,6 +56,10 @@
   const cockpit = el("cockpit");
   const tooltip = el("tooltip");
   const empty = el("empty");
+  const orbitView = el("orbit-view");
+  const frameView = el("frame-view");
+  const frame = el("frame");
+  const frameLoading = el("frame-loading");
 
   function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
@@ -141,7 +161,7 @@
   function sideLabel(side) {
     if (side === "dev") return "develop";
     if (side === "ops") return "operate";
-    return "bridge";
+    return "mixed";
   }
 
   function buildApps(overview) {
@@ -191,23 +211,14 @@
   }
 
   function layoutApps(apps) {
-    const groups = { dev: [], ops: [], bridge: [] };
-    apps.forEach(function (app) {
-      groups[app.side].push(app);
-    });
-    const sideCenters = { dev: 320, ops: 1080, bridge: 700 };
-    Object.keys(groups).forEach(function (side) {
-      const list = groups[side];
-      const count = list.length;
-      if (!count) return;
-      const maxRadius = side === "bridge" ? 240 : 270;
-      const spacing = Math.min(54, maxRadius / Math.sqrt(Math.max(0.5, count - 0.5)));
-      list.forEach(function (app, index) {
-        const angle = index * GOLDEN;
-        const radius = spacing * Math.sqrt(index + 0.5);
-        app.x = sideCenters[side] + Math.cos(angle) * radius;
-        app.y = 480 + Math.sin(angle) * radius;
-      });
+    const count = apps.length;
+    if (!count) return;
+    const spacing = Math.min(56, 332 / Math.sqrt(Math.max(1, count)));
+    apps.forEach(function (app, index) {
+      const angle = index * GOLDEN;
+      const radius = 126 + spacing * Math.sqrt(index + 0.5);
+      app.x = 700 + Math.cos(angle) * radius;
+      app.y = 480 + Math.sin(angle) * radius;
     });
   }
 
@@ -274,7 +285,6 @@
     button.classList.toggle("is-scanned", Boolean(diag));
     button.classList.toggle("is-selected", state.selected === app.key);
     button.classList.toggle("is-dim", !matchesFilter(app));
-    button.classList.toggle("is-hidden", false);
     const label = button.querySelector(".app-label");
     if (label) label.textContent = app.title;
     app.el = button;
@@ -322,12 +332,11 @@
 
   function showTooltip(app, event) {
     const diag = diagFor(app.key);
-    const status = effectiveStatus(app);
     tooltip.textContent = "";
     const name = document.createElement("b");
     name.textContent = app.title;
     const meta = document.createElement("span");
-    meta.textContent = sideLabel(app.side) + " · " + status + " · " + (diag ? diag.summary : app.summary);
+    meta.textContent = sideLabel(app.side) + " · " + effectiveStatus(app) + " · " + (diag ? diag.summary : app.summary);
     tooltip.appendChild(name);
     tooltip.appendChild(meta);
     tooltip.hidden = false;
@@ -404,7 +413,10 @@
         envBox.appendChild(chip);
       });
     }
-    el("inspect-link").href = "/kubernetes?q=" + encodeURIComponent(app.key);
+    const target = new URL("/kubernetes", window.location.origin);
+    target.searchParams.set("embed", "1");
+    target.searchParams.set("q", app.key);
+    el("inspect-link").href = target.pathname + target.search;
   }
 
   function closeInspector() {
@@ -435,19 +447,18 @@
     el("stat-apps-sub").textContent = dev + " dev · " + ops + " ops" + (bridge ? " · " + bridge + " mixed" : "");
     el("stat-servers").textContent = fmtNum(totals.servers || 0);
     el("stat-servers-sub").textContent = fmtNum(totals.servers_down || 0) + " down · " + fmtNum(totals.servers_warn || 0) + " warn";
-    const devLabel = document.querySelector(".cx-side-dev span");
-    const opsLabel = document.querySelector(".cx-side-ops span");
-    if (devLabel) devLabel.textContent = "develop · " + dev;
-    if (opsLabel) opsLabel.textContent = "operate · " + ops;
+    el("dev-meta").textContent = dev + (bridge ? " + " + bridge : "") + " dev";
+    el("ops-meta").textContent = ops + (bridge ? " + " + bridge : "") + " ops";
     renderPulse();
   }
 
   function renderPulse() {
-    const pulse = el("cx-pulse");
+    const pulse = el("live-btn");
     const status = el("cx-status");
     if (!pulse || !status) return;
     pulse.classList.toggle("is-live", state.live && !state.error);
     pulse.classList.toggle("is-error", Boolean(state.error));
+    pulse.setAttribute("aria-pressed", String(state.live));
     if (state.error) {
       status.textContent = "offline";
       return;
@@ -490,10 +501,9 @@
         layoutApps(state.apps);
         renderApps();
         setSummary();
-        if (state.interacted) {
-          applyTransform();
-        } else {
-          fitWorld();
+        if (state.view === "orbit") {
+          if (state.interacted) applyTransform();
+          else fitWorld();
         }
         const errors = overview.errors || [];
         if (errors.length) {
@@ -516,11 +526,11 @@
   }
 
   function fitWorld() {
-    const narrow = window.innerWidth < 860;
-    const safeW = window.innerWidth - (narrow ? 32 : 190);
-    const safeH = window.innerHeight - (narrow ? 250 : 220);
-    const zoom = clamp(Math.min(safeW / WORLD_W, safeH / WORLD_H), narrow ? 0.34 : 0.42, 1.08);
-    state.zoom = zoom;
+    const width = stage.clientWidth || Math.max(240, window.innerWidth - 230);
+    const height = stage.clientHeight || Math.max(200, window.innerHeight - 220);
+    const safeW = Math.max(180, width - (width < 620 ? 30 : 80));
+    const safeH = Math.max(160, height - (height < 480 ? 70 : 110));
+    state.zoom = clamp(Math.min(safeW / WORLD_W, safeH / WORLD_H), 0.28, 1.08);
     state.panX = 0;
     state.panY = 0;
     state.interacted = false;
@@ -529,9 +539,10 @@
 
   function zoomBy(factor, clientX, clientY) {
     const rect = stage.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
     const cx = (clientX == null ? rect.left + rect.width / 2 : clientX) - rect.left - rect.width / 2;
     const cy = (clientY == null ? rect.top + rect.height / 2 : clientY) - rect.top - rect.height / 2;
-    const next = clamp(state.zoom * factor, 0.28, 2.4);
+    const next = clamp(state.zoom * factor, 0.24, 2.4);
     const ratio = next / state.zoom;
     state.panX = cx - (cx - state.panX) * ratio;
     state.panY = cy - (cy - state.panY) * ratio;
@@ -598,8 +609,6 @@
 
   function setLive(value) {
     state.live = value;
-    const button = el("live-btn");
-    button.setAttribute("aria-pressed", String(value));
     if (liveTimer) {
       clearInterval(liveTimer);
       liveTimer = null;
@@ -617,10 +626,21 @@
     try { localStorage.setItem("hop-cockpit-labels", value ? "1" : "0"); } catch (_) {}
   }
 
+  function themeName() {
+    return document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
+  }
+
+  function syncFrameTheme() {
+    try {
+      frame.contentDocument.documentElement.setAttribute("data-theme", themeName());
+    } catch (_) {}
+  }
+
   function toggleTheme() {
-    const next = document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light";
+    const next = themeName() === "light" ? "dark" : "light";
     document.documentElement.setAttribute("data-theme", next);
     try { localStorage.setItem("hop-theme", next); } catch (_) {}
+    syncFrameTheme();
   }
 
   function openHelp() {
@@ -639,27 +659,158 @@
     applyFilter();
   }
 
-  function bindDocks() {
-    document.querySelectorAll("[data-dock]").forEach(function (dock) {
-      const items = Array.prototype.slice.call(dock.querySelectorAll(".dock-item"));
+  function setTitle(label) {
+    state.viewLabel = label || "Orbit";
+    el("view-title").textContent = state.viewLabel;
+    document.title = state.viewLabel + " · cockpit · hop";
+  }
+
+  function setActive(view) {
+    document.querySelectorAll(".cx-rail-item[data-view]").forEach(function (item) {
+      item.classList.toggle("is-active", item.dataset.view === view);
+    });
+  }
+
+  function withoutEmbed(raw) {
+    const url = new URL(raw, window.location.origin);
+    url.searchParams.delete("embed");
+    return url.pathname + url.search + url.hash;
+  }
+
+  function withEmbed(raw) {
+    const url = new URL(raw, window.location.origin);
+    url.searchParams.set("embed", "1");
+    return url.pathname + url.search + url.hash;
+  }
+
+  function setOpenExternal(href) {
+    el("open-external").href = href || "/";
+  }
+
+  function viewFromPath(pathname) {
+    for (let i = 0; i < ROUTES.length; i++) {
+      if (ROUTES[i].match.test(pathname)) return ROUTES[i];
+    }
+    return null;
+  }
+
+  function frameLoaded() {
+    frameLoading.hidden = true;
+    let href = "";
+    let pathname = "";
+    let search = "";
+    let hash = "";
+    try {
+      const location = frame.contentWindow.location;
+      href = location.href;
+      pathname = location.pathname;
+      search = location.search;
+      hash = location.hash;
+    } catch (_) {
+      return;
+    }
+    if (!href || href === "about:blank") return;
+    const params = new URLSearchParams(search);
+    if (params.get("embed") !== "1") {
+      frameLoading.hidden = false;
+      frame.src = withEmbed(href);
+      return;
+    }
+    syncFrameTheme();
+    const route = viewFromPath(pathname);
+    if (route) {
+      state.view = route.view;
+      setActive(route.view);
+      setTitle(route.label);
+    } else {
+      state.view = "frame";
+      setActive("");
+      setTitle(document.title.replace(/ · cockpit · hop$/, "") || "Workspace");
+    }
+    state.frameHref = pathname + search + hash;
+    setOpenExternal(withoutEmbed(href));
+  }
+
+  function showView(view, href, label) {
+    hideTooltip();
+    if (view === "orbit") {
+      state.view = "orbit";
+      orbitView.hidden = false;
+      frameView.hidden = true;
+      setActive("orbit");
+      setTitle("Orbit");
+      setOpenExternal("/");
+      requestAnimationFrame(function () {
+        if (state.interacted) applyTransform();
+        else fitWorld();
+      });
+      return;
+    }
+
+    state.view = view;
+    orbitView.hidden = true;
+    frameView.hidden = false;
+    setActive(view);
+    setTitle(label || "Workspace");
+
+    if (href) {
+      const target = new URL(withEmbed(href), window.location.origin);
+      const next = target.pathname + target.search + target.hash;
+      state.frameHref = next;
+      setOpenExternal(withoutEmbed(target.href));
+      if (frame.src !== target.href) {
+        frameLoading.hidden = false;
+        frame.src = target.href;
+      } else {
+        frameLoading.hidden = true;
+      }
+    }
+  }
+
+  function refreshCurrent() {
+    const button = el("refresh-btn");
+    button.classList.add("is-busy");
+    if (state.view === "orbit") {
+      loadOverview(true);
+    } else {
+      try {
+        frame.contentWindow.location.reload();
+      } catch (_) {
+        frame.src = frame.src;
+      }
+    }
+    setTimeout(function () { button.classList.remove("is-busy"); }, 900);
+  }
+
+  function globalSearch(query) {
+    const target = new URL("/search", window.location.origin);
+    target.searchParams.set("embed", "1");
+    if (query) target.searchParams.set("q", query);
+    showView("search", target.pathname + target.search, "Search");
+  }
+
+  function bindRails() {
+    document.querySelectorAll("[data-dock]").forEach(function (rail) {
+      const items = Array.prototype.slice.call(rail.querySelectorAll(".cx-rail-item"));
       if (!items.length) return;
-      dock.addEventListener("pointermove", function (event) {
+      const isLeft = rail.classList.contains("cx-rail-left");
+      rail.addEventListener("pointermove", function (event) {
         items.forEach(function (item) {
           const rect = item.getBoundingClientRect();
-          const center = rect.left + rect.width / 2;
-          const distance = Math.abs(event.clientX - center);
-          const reach = Math.max(90, rect.width * 2.6);
+          const center = rect.top + rect.height / 2;
+          const distance = Math.abs(event.clientY - center);
+          const reach = Math.max(80, rect.height * 2.6);
           const influence = Math.max(0, 1 - distance / reach);
-          const scale = 1 + influence * 0.46;
-          const lift = influence * (dock.classList.contains("dock-bl") || dock.classList.contains("dock-br") ? -13 : 13);
-          item.style.setProperty("--dock-scale", scale.toFixed(3));
-          item.style.setProperty("--dock-lift", lift.toFixed(1) + "px");
+          const scale = 1 + influence * 0.16;
+          const shift = influence * (isLeft ? 4 : -4);
+          item.style.setProperty("--rail-scale", scale.toFixed(3));
+          item.style.setProperty("--rail-shift", shift.toFixed(1) + "px");
         });
       });
-      dock.addEventListener("pointerleave", function () {
+      rail.addEventListener("pointerleave", function () {
         items.forEach(function (item) {
-          item.style.removeProperty("--dock-scale");
-          item.style.removeProperty("--dock-lift");
+          item.style.removeProperty("--rail-scale");
+          item.style.removeProperty("--rail-shift");
         });
       });
     });
@@ -674,7 +825,7 @@
 
     stage.addEventListener("pointerdown", function (event) {
       if (event.button !== 0) return;
-      if (event.target.closest(".app-node") || event.target.closest(".cx-inspector")) return;
+      if (event.target.closest(".app-node") || event.target.closest(".cx-inspector") || event.target.closest(".cx-empty")) return;
       dragging = true;
       startX = event.clientX;
       startY = event.clientY;
@@ -718,24 +869,30 @@
   }
 
   function bindControls() {
+    el("global-form").addEventListener("submit", function (event) {
+      event.preventDefault();
+      globalSearch(el("global-input").value.trim());
+    });
+
     el("filter-form").addEventListener("submit", function (event) { event.preventDefault(); });
     el("filter-input").addEventListener("input", function (event) {
       state.filter = event.target.value;
       applyFilter();
     });
+
     document.querySelectorAll("#side-switch button").forEach(function (button) {
       button.addEventListener("click", function () { setSide(button.dataset.side); });
     });
-    el("refresh-btn").addEventListener("click", function () {
-      const button = el("refresh-btn");
-      button.classList.add("is-busy");
-      loadOverview(true);
-      setTimeout(function () { button.classList.remove("is-busy"); }, 900);
+
+    document.querySelectorAll(".cx-rail-item[data-view]").forEach(function (item) {
+      item.addEventListener("click", function (event) {
+        event.preventDefault();
+        showView(item.dataset.view, item.dataset.href, item.dataset.label);
+      });
     });
-    el("zoom-in").addEventListener("click", function () { zoomBy(1.18, null, null); markInteracted(); });
-    el("zoom-out").addEventListener("click", function () { zoomBy(0.85, null, null); markInteracted(); });
-    el("zoom-fit").addEventListener("click", function () { fitWorld(); cockpit.classList.add("has-interacted"); });
+
     el("scan-btn").addEventListener("click", scanApps);
+    el("refresh-btn").addEventListener("click", refreshCurrent);
     el("live-btn").addEventListener("click", function () { setLive(!state.live); });
     el("theme-btn").addEventListener("click", toggleTheme);
     el("labels-btn").addEventListener("click", function () { setLabels(!state.labels); });
@@ -744,6 +901,19 @@
       node.addEventListener("click", closeHelp);
     });
     el("inspector-close").addEventListener("click", closeInspector);
+    el("inspect-link").addEventListener("click", function (event) {
+      event.preventDefault();
+      showView("kubernetes", event.currentTarget.getAttribute("href"), "Kubernetes");
+    });
+
+    el("zoom-in").addEventListener("click", function () { zoomBy(1.18, null, null); markInteracted(); });
+    el("zoom-out").addEventListener("click", function () { zoomBy(0.85, null, null); markInteracted(); });
+    el("zoom-fit").addEventListener("click", function () { fitWorld(); });
+    el("frame").addEventListener("load", frameLoaded);
+    document.querySelector(".cx-brand").addEventListener("click", function (event) {
+      event.preventDefault();
+      showView("orbit");
+    });
   }
 
   function bindKeys() {
@@ -757,8 +927,10 @@
         }
         if (typing) {
           target.value = "";
-          state.filter = "";
-          applyFilter();
+          if (target === el("filter-input")) {
+            state.filter = "";
+            applyFilter();
+          }
           target.blur();
           return;
         }
@@ -771,25 +943,34 @@
       if (typing) return;
       if (event.key === "/") {
         event.preventDefault();
+        el("global-input").focus();
+        return;
+      }
+      if (event.key === "f") {
+        if (state.view !== "orbit") return;
+        event.preventDefault();
         el("filter-input").focus();
         return;
       }
       if (event.key === "r") {
         event.preventDefault();
-        loadOverview(true);
+        refreshCurrent();
         return;
       }
       if (event.key === "g") {
+        if (state.view !== "orbit") return;
         event.preventDefault();
         fitWorld();
         return;
       }
       if (event.key === "+" || event.key === "=") {
+        if (state.view !== "orbit") return;
         event.preventDefault();
         zoomBy(1.18, null, null);
         return;
       }
       if (event.key === "-") {
+        if (state.view !== "orbit") return;
         event.preventDefault();
         zoomBy(0.85, null, null);
         return;
@@ -810,7 +991,7 @@
     let labels = false;
     try { labels = localStorage.getItem("hop-cockpit-labels") === "1"; } catch (_) {}
     setLabels(labels);
-    bindDocks();
+    bindRails();
     bindStage();
     bindControls();
     bindKeys();
@@ -819,7 +1000,7 @@
     fitWorld();
     ageTimer = setInterval(renderPulse, 5000);
     window.addEventListener("resize", function () {
-      if (!state.interacted) fitWorld();
+      if (state.view === "orbit" && !state.interacted) fitWorld();
     });
     window.addEventListener("beforeunload", function () {
       clearInterval(liveTimer);

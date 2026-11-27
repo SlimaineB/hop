@@ -1,0 +1,61 @@
+{{define "config.html"}}
+{{template "head" .}}
+<section class="config-hero">
+  <div class="config-heading">
+    <p class="eyebrow">hop workspace</p>
+    <h1>Config <span>studio</span></h1>
+    <p class="config-lede">Inspect and edit the same YAML file used by the CLI. Save is validated, atomic and protected against stale edits.</p>
+  </div>
+  <div class="config-actions">
+    <button class="ghost" id="config-reload" type="button">
+      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4"></path><path d="M21 3v6h-6"></path></svg>
+      Reload
+    </button>
+    <button class="primary" id="config-save" type="button" disabled>
+      Save config
+      <kbd>⌘S</kbd>
+    </button>
+  </div>
+</section>
+
+<div class="config-grid">
+  <aside class="config-side">
+    <section class="config-card">
+      <span class="config-kicker">config file</span>
+      <p class="config-path" id="config-path">{{if .ConfigPath}}{{.ConfigPath}}{{else}}demo / read-only{{end}}</p>
+      <p class="config-note" id="config-meta">loading…</p>
+      <p class="config-warning" id="config-warning" hidden></p>
+    </section>
+
+    <section class="config-card">
+      <span class="config-kicker">inventory</span>
+      <div class="config-summary" id="config-summary">
+        <span class="config-summary-item"><b>—</b><em>loading</em></span>
+      </div>
+    </section>
+
+    <section class="config-card config-tips">
+      <span class="config-kicker">good to know</span>
+      <p>Changes are written to disk immediately. Some runtime services keep their startup snapshot until hop is restarted.</p>
+      <p>Secrets stored directly in this file are visible in this local-only editor; prefer <code>*_env</code> fields when possible.</p>
+    </section>
+  </aside>
+
+  <section class="config-editor">
+    <div class="config-editor-head">
+      <div>
+        <span class="config-kicker">yaml document</span>
+        <h2 id="config-file-state">Configuration</h2>
+      </div>
+      <span class="config-status" id="config-status">loading</span>
+    </div>
+    <textarea id="config-yaml" spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off" aria-label="hop config YAML" disabled></textarea>
+    <div class="config-editor-foot">
+      <span id="config-line-count" class="muted small">—</span>
+      <span id="config-message" class="config-message" role="status" aria-live="polite"></span>
+      <span id="config-revision" class="config-revision"></span>
+    </div>
+  </section>
+</div>
+{{template "foot" .}}
+{{end}}
