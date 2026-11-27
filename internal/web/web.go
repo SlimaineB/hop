@@ -143,6 +143,7 @@ func (s *Server) routes() {
 
 	s.mux.HandleFunc("/", s.handleDashboard)
 	s.mux.HandleFunc("/dashboard", s.handleDashboard)
+	s.mux.HandleFunc("/cockpit", s.handleCockpit)
 	s.mux.HandleFunc("/kubernetes", s.handleDomain)
 	s.mux.HandleFunc("/containers", s.handleDomain)
 	s.mux.HandleFunc("/git", s.handleDomain)

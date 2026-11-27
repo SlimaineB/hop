@@ -728,6 +728,9 @@ The UI is split by domain instead of forcing every object type into one search:
 - `/` is the Kubernetes dashboard: pod readiness, restarts, CPU and memory from
   metrics-server, grouping by environment/application/cluster/namespace,
   per-group health, node capacity, and a triage list;
+- `/cockpit` is the experimental orbital cockpit: four corner docks, a
+  dev/ops application constellation that scales to large fleets, pan/zoom,
+  live filters, and on-demand application diagnostics;
 - `/kubernetes` is the pod inventory with its own filter, stats and context
   pills;
 - `/servers` is the server dashboard: inventory, HTTP/SSH checks, ping/TCP
@@ -1258,7 +1261,7 @@ The lab tokens are fake (`JIRA_TOKEN` and `GITLAB_TOKEN` are set to `lab-token`)
 - The web server is intended for local use.
 - Jira support uses REST API v2 and GitLab uses v4; both need network access
   plus a token for search/create. Other ticket providers are not bundled yet.
-- Container actions are CLI/cockpit only for now; there is no dedicated
+- Container actions are CLI/TUI cockpit only for now; there is no dedicated
   container page in the web UI.
 - The example links and browser shortcuts point to `example.com`: adapt them to
   your Grafana / Loki / Mimir / Jira setup.

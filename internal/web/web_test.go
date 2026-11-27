@@ -83,6 +83,17 @@ func TestTemplatesRender(t *testing.T) {
 		}
 	}
 
+	cockpitPage := httptest.NewRecorder()
+	server.Handler().ServeHTTP(cockpitPage, httptest.NewRequest(http.MethodGet, "/cockpit", nil))
+	if cockpitPage.Code != http.StatusOK {
+		t.Fatalf("cockpit status = %d, body=%s", cockpitPage.Code, cockpitPage.Body.String())
+	}
+	for _, needle := range []string{"cx-app-field", "cockpit.js", "cockpit.css", "dock-tl", "dock-br", "scan-btn", "side-switch"} {
+		if !strings.Contains(cockpitPage.Body.String(), needle) {
+			t.Fatalf("cockpit body missing %q", needle)
+		}
+	}
+
 	searchPage := httptest.NewRecorder()
 	server.Handler().ServeHTTP(searchPage, httptest.NewRequest(http.MethodGet, "/search", nil))
 	if searchPage.Code != http.StatusOK {
